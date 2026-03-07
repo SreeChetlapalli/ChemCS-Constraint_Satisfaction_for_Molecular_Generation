@@ -220,8 +220,9 @@ def _check_z3(
     solver.reset()
     if result_mass == z3.sat:
         # The "violation" query is satisfiable => mass is NOT conserved
-        r_val = float(str(z3.simplify(r_mass_expr)))
-        p_val = float(str(z3.simplify(p_mass_expr)))
+        from fractions import Fraction
+        r_val = float(Fraction(str(z3.simplify(r_mass_expr))))
+        p_val = float(Fraction(str(z3.simplify(p_mass_expr))))
         violations.append(
             f"Mass not conserved: reactants≈{r_val:.3f} u, products≈{p_val:.3f} u"
         )
