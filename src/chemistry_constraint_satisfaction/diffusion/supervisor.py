@@ -163,7 +163,6 @@ class Supervisor:
 
         # Compute target mass and charge from reactants
         self._target_mass   = sum(m.total_mass()   for m in reactants)
-        self._target_charge = sum(m.total_charge() for m in reactants)
 
     # ------------------------------------------------------------------
     # Main entry point
@@ -237,8 +236,7 @@ class Supervisor:
                         )
                         if cr2.sat:
                             # Correction worked — re-encode and commit
-                            from .model import encode_molecule as _enc
-                            x_prev, adj_prev = _enc(candidate)
+                            x_prev, adj_prev = encode_molecule(candidate)
                             x_t, adj_t = x_prev, adj_prev
                             history.append((x_t.copy(), adj_t.copy()))
                             committed = True
@@ -254,10 +252,11 @@ class Supervisor:
                 if self.verbose:
                     print(f"  [t={t:3d}] BACKTRACK #{total_backtracks} — violations: {cr.reason}")
                 if len(history) > 1:
+                    failed_t = t
                     history.pop()               # discard current
                     x_t, adj_t = history[-1]
                     t = min(t + 1, self.T)      # step back up one step
-                    step_log.append(StepRecord(t, 0, cr, "backtrack", 0.0))
+                    step_log.append(StepRecord(failed_t, 0, cr, "backtrack", 0.0))
                 else:
                     # Nowhere to backtrack — commit best effort
                     step_log.append(StepRecord(t, 0, cr, "skip", 0.0))

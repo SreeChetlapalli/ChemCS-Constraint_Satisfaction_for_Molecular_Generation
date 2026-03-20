@@ -1,145 +1,202 @@
 # Chemistry Constraint Satisfaction
 
-**Constraint-checked molecular generation** — uses Z3 to verify mass/charge conservation and bond valency during a diffusion-style generation loop.
+**Constraint-checked molecular generation** — Z3 (or a pure-Python fallback) verifies mass/charge conservation and bond valency while a small diffusion-style model runs inside a **supervisor** loop.
 
 ---
 
-## Problem: Invalid molecules from generative models
+## Navigate this repo
 
-Generative models often produce **physically impossible molecules** or **violate conservation laws** during reaction prediction. For example:
-
-- Carbon with 5 bonds
-- Atoms disappearing or appearing without conservation
-- Invalid bond valencies
-
-The usual workaround is to generate many candidates and discard the invalid ones. That can be slow and wasteful.
-
----
-
-## Approach: Check constraints during generation
-
-The codebase implements a constraint-checking wrapper around the diffusion model:
-
-1. After each reverse/denoising step, decode the candidate into a `MolecularState`.
-2. Check intermediate states against chemical axioms (mass/charge conservation, bond valency). If `z3` is installed, the Z3-backed checker is used.
-3. If a step fails, try a small correction and/or backtrack (bounded by `max_retries` and `max_backtracks`).
-4. At the end, validate the full reaction with `check_reaction`.
-
-### Example
-
-- **Input:** reactants such as CH₃Br and OH⁻  
-- **Process:** Generate product step-by-step; after each step, the constraint checker validates valency (and the final step validates mass/charge conservation).  
-- **If a decoded state is invalid** (e.g., carbon with 5 bonds): backtrack and try again (within the retry/backtrack limits).  
-- **Output:** Chemically valid result, e.g. CH₃OH + Br⁻.
-
-Constraint checks happen during generation, rather than only filtering after the fact.
+| I want to… | Go here |
+|------------|---------|
+| **Run something in 2 minutes** | [Quick start](#quick-start) |
+| **Install and import the package** | [Setup](#setup) · [docs/USAGE.md](docs/USAGE.md) |
+| **Run tests** | [Tests](#tests) · [CONTRIBUTING.md](CONTRIBUTING.md) |
+| **Try a full demo (CLI)** | `python scripts/demo.py` |
+| **Try Jupyter / Colab** | [notebooks/README.md](notebooks/README.md) |
+| **See every folder** | [Repository map](#repository-map) |
+| **Change the code** | [CONTRIBUTING.md](CONTRIBUTING.md) |
+| **Doc index** | [docs/README.md](docs/README.md) |
 
 ---
 
-## Design Notes
+## Table of contents
 
-- Instead of filtering invalid candidates after generation, this wrapper only commits steps that pass the selected checks.
-- When Z3 is installed, checks are run with the solver; otherwise there is a pure-Python fallback.
-- The final output is still verified with `check_reaction` to confirm mass and charge conservation.
-
----
-
-## Why this helps
-
-- Fewer invalid candidates make it easier to evaluate reaction pathways.
-- Moving checks earlier in the pipeline can reduce wasted downstream work.
-
----
-
-## Trade-offs
-
-- Runtime overhead: solver checks add cost per step. The retry/backtrack limits keep the worst case bounded; you can also switch to the pure-Python checker for faster runs.
+- [Navigate this repo](#navigate-this-repo)
+- [Quick start](#quick-start)
+- [What this project does](#what-this-project-does)
+- [Repository map](#repository-map)
+- [Setup](#setup)
+- [Tests](#tests)
+- [Scripts](#scripts)
+- [Design notes & trade-offs](#design-notes--trade-offs)
+- [Goals (example timeline)](#goals-example-timeline)
+- [Contributing & license](#contributing--license)
 
 ---
 
-## Goals and Timeline
+## Quick start
 
-| Milestone | Target |
-|-----------|--------|
-| **Mid-semester** | Add step-level correction based on Z3-backed checks. |
-| **End of semester** | Benchmark **1,000 generated reactions** and compare failure rate to a baseline model. |
+1. **Clone** the repository and `cd` into the folder (name may be `ChemistryConstraintSatisfaction` or `ChemistryConstraintSatisfaction-1` depending on how you cloned).
+
+2. **Create a venv** (Python **3.10+** recommended):
+
+   ```powershell
+   python -m venv .venv
+   .\.venv\Scripts\Activate.ps1
+   ```
+
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate
+   ```
+
+3. **Install** (pick one):
+
+   ```bash
+   # Recommended: editable install so `import chemistry_constraint_satisfaction` works everywhere
+   pip install -e ".[dev]"
+   ```
+
+   ```bash
+   # Alternative: requirements file only (you may need to set PYTHONPATH=src for some tools)
+   pip install -r requirements.txt
+   ```
+
+4. **Verify**:
+
+   ```bash
+   python scripts/check_env.py
+   ```
+
+   You want to see PyTorch, Z3, and the package version, ending with `OK — environment ready.`
+
+5. **Run tests**:
+
+   ```bash
+   python run_tests.py
+   ```
+
+6. **Run the demo**:
+
+   ```bash
+   python scripts/demo.py
+   ```
+
+For copy-paste **Python examples**, see **[docs/USAGE.md](docs/USAGE.md)**.
+
+---
+
+## What this project does
+
+Generative models can propose **invalid** structures (e.g. wrong valency, broken conservation). This repo wraps a small **NumPy** graph denoising model with a **supervisor** that:
+
+1. Decodes each step to a `MolecularState`.
+2. Runs **constraint checks** (valency during the trajectory; full reaction check at the end).
+3. **Corrects or backtracks** within configured limits (`max_retries`, `max_backtracks`).
+
+If `z3-solver` is installed, checks can use Z3; otherwise a **pure-Python** checker is used.
+
+---
+
+## Repository map
+
+```
+ChemistryConstraintSatisfaction/
+├── README.md                 ← You are here (overview + navigation)
+├── CONTRIBUTING.md           ← Tests, layout, how to contribute
+├── pyproject.toml            ← Package metadata + editable install + pytest config
+├── requirements.txt          ← Same runtime deps as pyproject (pip -r friendly)
+├── run_tests.py              ← Run all tests with stdlib unittest only
+│
+├── docs/
+│   ├── README.md             ← Index of extra documentation
+│   └── USAGE.md              ← Import examples, module map
+│
+├── src/chemistry_constraint_satisfaction/   ← Installable Python package
+│   ├── __init__.py           ← Package version
+│   ├── constraints/          ← Atoms, molecules, check_reaction / check_intermediate
+│   └── diffusion/            ← MolecularDiffusionModel, Supervisor, encode/decode
+│
+├── tests/                    ← pytest suites (also mirrored in run_tests.py)
+├── scripts/
+│   ├── check_env.py          ← Quick environment sanity check
+│   └── demo.py               ← End-to-end CLI demo + small benchmark
+└── notebooks/
+    ├── README.md             ← How to open demo.ipynb (local / Colab)
+    └── demo.ipynb            ← Interactive walkthrough + optional PyTorch training
+```
 
 ---
 
 ## Setup
 
-### 1. Clone and enter the repo
+### Clone
 
 ```bash
-git clone <repo-url>
-cd ChemistryConstraintSatisfaction
+git clone <your-repo-url>
+cd <repo-folder>
 ```
 
-### 2. Create and activate a virtual environment
+### Dependencies
 
-**Windows (PowerShell):**
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-```
-
-**Linux / macOS:**
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-```
-
-### 3. Install dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-For **RDKit** (optional, for SMILES and chemistry utilities), use Conda if needed:
+- **Required:** `numpy`, `torch`, `z3-solver`, `tqdm` (see `requirements.txt` or `pyproject.toml`).
+- **Optional:** RDKit (often via Conda) for SMILES / extra chemistry tooling — not required for the core demos.
 
 ```bash
 conda install -c conda-forge rdkit
 ```
 
-### 4. Verify installation
+### GPU (optional)
 
-From the repo root (with the venv activated or using the venv’s Python):
-
-```bash
-python scripts/check_env.py
-```
-
-You should see PyTorch, Z3, and the package version; `OK — environment ready.` means the setup is correct.
-
-### 5. (Optional) GPU and Colab
-
-- For local GPU: install PyTorch with CUDA from [pytorch.org](https://pytorch.org).
-- For Colab: upload this repo or clone from Git and run `pip install -r requirements.txt` in a notebook.
+- Local: install a CUDA build of PyTorch from [pytorch.org](https://pytorch.org).
+- Colab: use `notebooks/demo.ipynb` and set the runtime to GPU.
 
 ---
 
-## Project layout
+## Tests
 
-```
-ChemistryConstraintSatisfaction/
-├── README.md
-├── requirements.txt
-├── .gitignore
-├── src/
-│   └── chemistry_constraint_satisfaction/
-│       ├── __init__.py
-│       ├── constraints/    # Z3 chemical axioms (mass, valency)
-│       └── diffusion/      # Diffusion model + supervisor loop
-├── scripts/
-│   └── check_env.py        # Verify PyTorch, Z3, and package
-├── tests/
-└── notebooks/              # Colab-friendly experiments
-```
+| Command | When to use |
+|---------|-------------|
+| `python run_tests.py` | No pytest installed; uses **unittest** only |
+| `pytest tests/ -v` | After `pip install -e ".[dev]"` |
+
+See **[CONTRIBUTING.md](CONTRIBUTING.md)** for details.
 
 ---
 
-## License
+## Scripts
 
-Use and cite as appropriate for your institution. Open-source tools: PyTorch, Z3.
+| Script | Purpose |
+|--------|---------|
+| `python scripts/check_env.py` | Confirms PyTorch, Z3, and package import |
+| `python scripts/demo.py` | Constraint demos + supervised generation + short benchmark |
+
+---
+
+## Design notes & trade-offs
+
+- Steps are only committed when they pass the configured checks (or after correction).
+- Z3 adds **runtime cost**; use `prefer_z3=False` or the pure-Python path when you need speed over solver-backed checks.
+- Final validity still depends on the **model**; the supervisor enforces **checked** constraints, not “magic chemistry.”
+
+---
+
+## Goals (example timeline)
+
+| Milestone | Target |
+|-----------|--------|
+| Mid-term | Step-level correction with Z3-backed checks |
+| End-term | Larger benchmark vs a baseline generator |
+
+---
+
+## Contributing & license
+
+- **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md)
+- **License:** Use and cite as appropriate for your institution. This project builds on open-source tools (e.g. PyTorch, Z3).
+
+---
+
+## Publishing note
+
+If you fork this repo, update **`pyproject.toml`** `name` / `version` as needed before publishing to PyPI. The `[project.urls]` block is intentionally omitted so you can add your real repository URL when you publish.

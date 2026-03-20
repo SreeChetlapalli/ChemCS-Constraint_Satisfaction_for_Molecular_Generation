@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chemistry-constraint-satisfaction"
+version = "0.2.0"
+description = "Constraint-checked molecular generation: Z3 + diffusion supervisor loop."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "See README (License section)" }
+keywords = ["chemistry", "constraints", "z3", "diffusion", "molecules"]
+authors = [{ name = "Project contributors" }]
+dependencies = [
+    "z3-solver>=4.12.0",
+    "torch>=2.0.0",
+    "numpy>=1.24.0",
+    "tqdm>=4.65.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

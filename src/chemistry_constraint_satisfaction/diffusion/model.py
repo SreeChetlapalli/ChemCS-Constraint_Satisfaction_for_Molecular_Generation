@@ -107,6 +107,7 @@ class MolecularDiffusionModel:
         self.bond_head = NumpyLinear(hidden_dim * 2,  4, rng)   # 4 bond orders: 0,1,2,3
         self.hidden_dim = hidden_dim
         self._rng = rng
+        self._alpha_bar_cache: dict[int, np.ndarray] = {}
 
     # ------------------------------------------------------------------
     # Noise schedule helpers
@@ -125,6 +126,19 @@ class MolecularDiffusionModel:
             result *= 1.0 - MolecularDiffusionModel._beta(s, T)
         return result
 
+    def _alpha_bar_cached(self, t: int, T: int) -> float:
+        """Read alpha_bar(t, T) from a per-T cache."""
+        if T not in self._alpha_bar_cache:
+            alpha_vals = np.empty(T + 1, dtype=np.float64)
+            alpha_vals[0] = 1.0
+            running = 1.0
+            for step in range(1, T + 1):
+                running *= 1.0 - self._beta(step, T)
+                alpha_vals[step] = running
+            self._alpha_bar_cache[T] = alpha_vals
+        t_clamped = min(max(t, 0), T)
+        return float(self._alpha_bar_cache[T][t_clamped])
+
     # ------------------------------------------------------------------
     # Forward process (add noise)
     # ------------------------------------------------------------------
@@ -141,7 +155,7 @@ class MolecularDiffusionModel:
 
         Returns (x_noisy, adj_noisy).
         """
-        alpha_bar = self._alpha_bar(t, T)
+        alpha_bar = self._alpha_bar_cached(t, T)
         sqrt_ab   = math.sqrt(alpha_bar)
         sqrt_1mab = math.sqrt(1.0 - alpha_bar)
 
@@ -193,8 +207,8 @@ class MolecularDiffusionModel:
                 adj_pred[j, i] = bond_order
 
         # Posterior mean (interpolation back toward x_{t-1})
-        ab_t   = self._alpha_bar(t, T)
-        ab_tm1 = self._alpha_bar(t - 1, T) if t > 1 else 1.0
+        ab_t   = self._alpha_bar_cached(t, T)
+        ab_tm1 = self._alpha_bar_cached(t - 1, T) if t > 1 else 1.0
         beta_t = self._beta(t, T)
 
         coef1  = math.sqrt(ab_tm1) * beta_t / (1.0 - ab_t)
@@ -227,7 +241,7 @@ class MolecularDiffusionModel:
 
 def _softmax(x: np.ndarray) -> np.ndarray:
     e = np.exp(x - x.max(axis=-1, keepdims=True))
-    return e / e.sum(axis=-1, keepdims=True)
+    return e / np.clip(e.sum(axis=-1, keepdims=True), 1e-8, None)
 
 
 # ---------------------------------------------------------------------------
@@ -248,5 +262,7 @@ def encode_molecule(mol: MolecularState) -> Tuple[np.ndarray, np.ndarray]:
                 bond_order = min(remaining, MAX_VALENCY.get(mol.atoms[j].element, 4))
                 adj[i, j] = bond_order
                 remaining -= bond_order
-
+    # Ensure a symmetric adjacency matrix with no self-loops.
+    adj = np.maximum(adj, adj.T)
+    np.fill_diagonal(adj, 0.0)
     return x, adj
