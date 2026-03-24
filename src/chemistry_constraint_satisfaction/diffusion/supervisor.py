@@ -35,6 +35,14 @@ class StepRecord:
 
 
 @dataclasses.dataclass
+class IntermediateSnapshot:
+    """Decoded molecule state at a committed diffusion step."""
+    t: int
+    molecule: MolecularState
+    adjacency: list
+
+
+@dataclasses.dataclass
 class GenerationResult:
     """Result returned by `Supervisor.run()`."""
     product: MolecularState
@@ -44,6 +52,8 @@ class GenerationResult:
     total_backtracks: int
     total_corrections: int
     wall_time_s: float
+    intermediates: List[IntermediateSnapshot] = dataclasses.field(default_factory=list)
+    product_adjacency: list = dataclasses.field(default_factory=list)
 
     @property
     def success(self) -> bool:
@@ -176,6 +186,7 @@ class Supervisor:
         step_log: List[StepRecord] = []
         total_backtracks = 0
         total_corrections = 0
+        intermediates: List[IntermediateSnapshot] = []
 
         # ---- Initialise from reactants (concatenate atoms) -----------
         init_mol = self._build_initial_state()
@@ -269,6 +280,12 @@ class Supervisor:
                         print(f"  [supervisor] Max backtracks reached; stopping early.")
                     break
 
+            if committed or (step_log and step_log[-1].action == "skip"):
+                snap = self.model.decode(x_t, adj_t, name=f"t{t}")
+                intermediates.append(IntermediateSnapshot(
+                    t=t, molecule=snap, adjacency=adj_t.tolist(),
+                ))
+
             t -= 1
 
         # ---- Decode final state -------------------------------------
@@ -288,6 +305,8 @@ class Supervisor:
             total_backtracks=total_backtracks,
             total_corrections=total_corrections,
             wall_time_s=wall_time,
+            intermediates=intermediates,
+            product_adjacency=adj_t.tolist(),
         )
 
         if self.verbose:

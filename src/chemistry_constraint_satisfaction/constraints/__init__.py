@@ -9,6 +9,7 @@ from .chemical_axioms import (
     Z3_AVAILABLE,
     ATOMIC_MASS,
     MAX_VALENCY,
+    ATOMIC_NUMBER,
 )
 
 __all__ = [
@@ -20,4 +21,5 @@ __all__ = [
     "Z3_AVAILABLE",
     "ATOMIC_MASS",
     "MAX_VALENCY",
+    "ATOMIC_NUMBER",
 ]

@@ -24,44 +24,100 @@ except ImportError:
 
 
 # ---------------------------------------------------------------------------
-# Element data
+# Element data  (Z = 1 .. 86, H through Rn)
+# IUPAC 2021 standard atomic weights; max common covalent valencies.
 # ---------------------------------------------------------------------------
 
-#: Standard atomic masses (u) for common elements.
+#: Standard atomic masses (u).
 ATOMIC_MASS: Dict[str, float] = {
-    "H":  1.008,
-    "C": 12.011,
-    "N": 14.007,
-    "O": 15.999,
-    "F": 18.998,
-    "P": 30.974,
-    "S": 32.06,
-    "Cl": 35.45,
-    "Br": 79.904,
-    "I": 126.904,
+    "H": 1.008, "He": 4.003,
+    "Li": 6.941, "Be": 9.012, "B": 10.81, "C": 12.011, "N": 14.007,
+    "O": 15.999, "F": 18.998, "Ne": 20.180,
+    "Na": 22.990, "Mg": 24.305, "Al": 26.982, "Si": 28.086, "P": 30.974,
+    "S": 32.06, "Cl": 35.45, "Ar": 39.948,
+    "K": 39.098, "Ca": 40.078, "Sc": 44.956, "Ti": 47.867, "V": 50.942,
+    "Cr": 51.996, "Mn": 54.938, "Fe": 55.845, "Co": 58.933, "Ni": 58.693,
+    "Cu": 63.546, "Zn": 65.38, "Ga": 69.723, "Ge": 72.630, "As": 74.922,
+    "Se": 78.971, "Br": 79.904, "Kr": 83.798,
+    "Rb": 85.468, "Sr": 87.62, "Y": 88.906, "Zr": 91.224, "Nb": 92.906,
+    "Mo": 95.95, "Tc": 97.0, "Ru": 101.07, "Rh": 102.906, "Pd": 106.42,
+    "Ag": 107.868, "Cd": 112.414, "In": 114.818, "Sn": 118.710, "Sb": 121.760,
+    "Te": 127.60, "I": 126.904, "Xe": 131.293,
+    "Cs": 132.905, "Ba": 137.327,
+    "La": 138.905, "Ce": 140.116, "Pr": 140.908, "Nd": 144.242, "Pm": 145.0,
+    "Sm": 150.36, "Eu": 151.964, "Gd": 157.25, "Tb": 158.925, "Dy": 162.500,
+    "Ho": 164.930, "Er": 167.259, "Tm": 168.934, "Yb": 173.045, "Lu": 174.967,
+    "Hf": 178.49, "Ta": 180.948, "W": 183.84, "Re": 186.207, "Os": 190.23,
+    "Ir": 192.217, "Pt": 195.084, "Au": 196.967, "Hg": 200.592,
+    "Tl": 204.38, "Pb": 207.2, "Bi": 208.980, "Po": 209.0, "At": 210.0,
+    "Rn": 222.0,
 }
 
-#: Maximum covalent valency for each element.
+#: Maximum common covalent valency for each element.
 MAX_VALENCY: Dict[str, int] = {
-    "H":  1,
-    "C":  4,
-    "N":  3,   # can be 4 when positively charged (ammonium)
-    "O":  2,
-    "F":  1,
-    "P":  5,
-    "S":  6,
-    "Cl": 1,
-    "Br": 1,
-    "I":  1,
+    "H": 1, "He": 0,
+    "Li": 1, "Be": 2, "B": 3, "C": 4, "N": 3, "O": 2, "F": 1, "Ne": 0,
+    "Na": 1, "Mg": 2, "Al": 3, "Si": 4, "P": 5, "S": 6, "Cl": 7, "Ar": 0,
+    "K": 1, "Ca": 2, "Sc": 3, "Ti": 4, "V": 5, "Cr": 6, "Mn": 7,
+    "Fe": 6, "Co": 6, "Ni": 4, "Cu": 4, "Zn": 2,
+    "Ga": 3, "Ge": 4, "As": 5, "Se": 6, "Br": 7, "Kr": 2,
+    "Rb": 1, "Sr": 2, "Y": 3, "Zr": 4, "Nb": 5, "Mo": 6, "Tc": 7,
+    "Ru": 8, "Rh": 6, "Pd": 4, "Ag": 3, "Cd": 2,
+    "In": 3, "Sn": 4, "Sb": 5, "Te": 6, "I": 7, "Xe": 8,
+    "Cs": 1, "Ba": 2,
+    "La": 3, "Ce": 4, "Pr": 4, "Nd": 3, "Pm": 3,
+    "Sm": 3, "Eu": 3, "Gd": 3, "Tb": 4, "Dy": 3,
+    "Ho": 3, "Er": 3, "Tm": 3, "Yb": 3, "Lu": 3,
+    "Hf": 4, "Ta": 5, "W": 6, "Re": 7, "Os": 8,
+    "Ir": 6, "Pt": 6, "Au": 5, "Hg": 4,
+    "Tl": 3, "Pb": 4, "Bi": 5, "Po": 6, "At": 7, "Rn": 2,
+}
+
+#: Atomic number for each element symbol.
+ATOMIC_NUMBER: Dict[str, int] = {
+    sym: z for z, sym in enumerate([
+        None, "H", "He", "Li", "Be", "B", "C", "N", "O", "F", "Ne",
+        "Na", "Mg", "Al", "Si", "P", "S", "Cl", "Ar",
+        "K", "Ca", "Sc", "Ti", "V", "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn",
+        "Ga", "Ge", "As", "Se", "Br", "Kr",
+        "Rb", "Sr", "Y", "Zr", "Nb", "Mo", "Tc", "Ru", "Rh", "Pd", "Ag", "Cd",
+        "In", "Sn", "Sb", "Te", "I", "Xe",
+        "Cs", "Ba", "La", "Ce", "Pr", "Nd", "Pm", "Sm", "Eu", "Gd", "Tb", "Dy",
+        "Ho", "Er", "Tm", "Yb", "Lu",
+        "Hf", "Ta", "W", "Re", "Os", "Ir", "Pt", "Au", "Hg",
+        "Tl", "Pb", "Bi", "Po", "At", "Rn",
+    ], start=0) if sym is not None
 }
 
 #: Extra valency allowed when an atom has a formal charge.
-#  Example: N with +1 charge can hold 4 bonds; O with -1 keeps valency at 1.
 CHARGE_VALENCY_DELTA: Dict[str, Dict[int, int]] = {
-    "N": {+1: +1, -1: -1},
-    "O": {-1: -1},
-    "S": {+1: +1, +2: +2},
-    "P": {+1: +1},
+    "H":  {-1: -1},
+    "Li": {+1: -1},
+    "B":  {-1: +1},
+    "C":  {-1: -1, +1: -1},
+    "N":  {+1: +1, -1: -1},
+    "O":  {-1: -1, +1: +1},
+    "F":  {-1: -1},
+    "Na": {+1: -1},
+    "Mg": {+2: -2},
+    "Al": {+3: -3},
+    "Si": {-1: +1},
+    "P":  {+1: +1},
+    "S":  {+1: +1, +2: +2, -1: -1},
+    "Cl": {-1: -1, +1: +1},
+    "K":  {+1: -1},
+    "Ca": {+2: -2},
+    "Fe": {+2: -2, +3: -3},
+    "Cu": {+1: -1, +2: -2},
+    "Zn": {+2: -2},
+    "Br": {-1: -1, +1: +1},
+    "Ag": {+1: -1},
+    "Sn": {+2: -2, +4: -4},
+    "I":  {-1: -1, +1: +1},
+    "Pt": {+2: -2, +4: -4},
+    "Au": {+1: -1, +3: -3},
+    "Hg": {+1: -1, +2: -2},
+    "Pb": {+2: -2, +4: -4},
 }
 
 

@@ -9,7 +9,7 @@ from .model import (
     NUM_ELEM,
     ELEMENTS,
 )
-from .supervisor import Supervisor, GenerationResult, StepRecord
+from .supervisor import Supervisor, GenerationResult, StepRecord, IntermediateSnapshot
 
 __all__ = [
     "MolecularDiffusionModel",
