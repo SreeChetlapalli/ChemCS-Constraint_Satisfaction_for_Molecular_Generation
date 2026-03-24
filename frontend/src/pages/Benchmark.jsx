@@ -31,25 +31,45 @@ export default function BenchmarkPage({ presets }) {
   const valDelta = result
     ? (result.summary.supervised_valency_pct - result.summary.unsupervised_valency_pct).toFixed(1)
     : 0;
+  const fullDelta = result
+    ? (result.summary.supervised_full_pct - result.summary.unsupervised_full_pct).toFixed(1)
+    : 0;
 
   return (
     <div className="max-w-[1200px] mx-auto px-6 py-10">
       <h1 className="text-[28px] font-semibold text-white mb-2">Benchmark</h1>
       <p className="text-[15px] mb-3" style={{ color: "var(--text-secondary)" }}>
-        See how much the constraint supervisor actually helps by comparing it against raw generation.
+        Does the constraint supervisor actually improve molecule quality? Run side-by-side trials to find out.
       </p>
-      <p className="text-[13px] mb-8 max-w-[750px] leading-relaxed" style={{ color: "var(--text-muted)" }}>
-        Each trial generates the same molecule twice: once with the constraint supervisor turned on
-        and once without it. The results go side by side so you can compare valency correctness,
-        charge conservation, bond validity, and mass accuracy. The summary stats at the top show
-        the overall difference across all trials.
-      </p>
+
+      {/* ── How it works ── */}
+      <div className="rounded-lg p-5 mb-8" style={{ background: "var(--bg-raised)" }}>
+        <span className="text-[14px] text-white font-medium block mb-2">How this benchmark works</span>
+        <div className="grid grid-cols-3 gap-6 text-[13px] leading-relaxed" style={{ color: "var(--text-secondary)" }}>
+          <div>
+            <span className="text-green-400 font-medium">With Supervisor</span> — the AI model generates a molecule,
+            and at every step the constraint engine checks the result and fixes any rule violations (bad bond counts,
+            charge errors) before moving on.
+          </div>
+          <div>
+            <span className="text-red-400 font-medium">Without Supervisor</span> — the same AI model generates a
+            molecule with no checking or corrections at all. Whatever the model outputs is the final answer.
+          </div>
+          <div>
+            <span className="text-white font-medium">Why compare?</span> — This shows how much value the constraint
+            system adds. A perfect AI model wouldn't need corrections, but in practice, the supervisor catches
+            mistakes and dramatically improves validity rates.
+          </div>
+        </div>
+      </div>
 
       {presets && <ReactionPicker presets={presets} value={reaction} onChange={setReaction} />}
 
       <div className="flex items-end gap-4 mb-8 pb-8 border-b" style={{ borderColor: "var(--border)" }}>
         <div>
-          <label className="text-[13px] block mb-1.5" style={{ color: "var(--text-muted)" }}>Trials</label>
+          <label className="text-[13px] block mb-1.5" style={{ color: "var(--text-muted)" }}>
+            Number of trials
+          </label>
           <input
             type="number" value={n}
             onChange={(e) => setN(Math.min(100, Math.max(1, Number(e.target.value))))}
@@ -62,7 +82,7 @@ export default function BenchmarkPage({ presets }) {
           onClick={run} disabled={loading || !presets}
           className="px-5 py-2 bg-white text-black text-[14px] font-medium rounded-md hover:bg-neutral-200 disabled:opacity-30 transition-colors"
         >
-          {loading ? `Running ${n} trials...` : "Run"}
+          {loading ? `Running ${n} trials...` : "Run benchmark"}
         </button>
       </div>
 
@@ -70,81 +90,111 @@ export default function BenchmarkPage({ presets }) {
 
       {result && (
         <>
+          {/* ── Headline number ── */}
           <div className="mb-10">
             <span className="text-[36px] font-semibold text-green-400 font-mono">
-              +{valDelta}pp
+              +{valDelta}%
             </span>
             <span className="text-[15px] ml-3" style={{ color: "var(--text-secondary)" }}>
-              valency improvement with supervision across {result.n} trials
+              more valid molecules when the supervisor is ON ({result.n} trials)
             </span>
           </div>
 
+          {/* ── Side-by-side bar charts ── */}
           <div className="grid grid-cols-2 gap-12 mb-10">
             <BarPair
-              label="Valency validity"
+              label="Atoms have correct bond counts"
+              sublabel="(valency validity)"
               supervised={result.summary.supervised_valency_pct}
               unsupervised={result.summary.unsupervised_valency_pct}
             />
             <BarPair
-              label="Full conservation"
+              label="Mass + charge fully conserved"
+              sublabel="(full conservation)"
               supervised={result.summary.supervised_full_pct}
               unsupervised={result.summary.unsupervised_full_pct}
             />
           </div>
 
+          {/* ── Per-trial scatter ── */}
           {result.runs && (
             <div className="mb-10">
-              <span className="text-[15px] text-white block mb-4">Per-trial results</span>
+              <span className="text-[15px] text-white block mb-1">Per-trial results</span>
+              <span className="text-[13px] block mb-4" style={{ color: "var(--text-muted)" }}>
+                Each dot is one trial.{" "}
+                <span className="text-green-400">Green</span> = valid,{" "}
+                <span className="text-red-400">red</span> = invalid.
+              </span>
               <RunScatter runs={result.runs} />
             </div>
           )}
 
+          {/* ── Comparison table ── */}
+          <span className="text-[15px] text-white block mb-3">Summary table</span>
           <table className="w-full text-[14px] mb-10">
             <thead>
               <tr className="border-b" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>
-                <th className="text-left py-3 font-normal">Metric</th>
-                <th className="text-right py-3 font-normal">Supervised</th>
-                <th className="text-right py-3 font-normal">Unsupervised</th>
-                <th className="text-right py-3 font-normal">Delta</th>
+                <th className="text-left py-3 font-normal">What was checked</th>
+                <th className="text-right py-3 font-normal">
+                  <span className="text-green-400">With</span> supervisor
+                </th>
+                <th className="text-right py-3 font-normal">
+                  <span className="text-red-400">Without</span> supervisor
+                </th>
+                <th className="text-right py-3 font-normal">Improvement</th>
               </tr>
             </thead>
             <tbody>
               <tr className="border-b" style={{ borderColor: "var(--border)" }}>
-                <td className="py-3 text-white">Valency validity</td>
+                <td className="py-3">
+                  <span className="text-white">Correct bond counts</span>
+                  <span className="text-[12px] ml-2" style={{ color: "var(--text-muted)" }}>
+                    (every atom's bonds ≤ its max valency)
+                  </span>
+                </td>
                 <td className="py-3 text-right font-mono text-green-400">{result.summary.supervised_valency_pct}%</td>
                 <td className="py-3 text-right font-mono text-red-400">{result.summary.unsupervised_valency_pct}%</td>
-                <td className="py-3 text-right font-mono text-white">+{valDelta}pp</td>
+                <td className="py-3 text-right font-mono text-white">+{valDelta}%</td>
               </tr>
               <tr>
-                <td className="py-3 text-white">Full conservation</td>
+                <td className="py-3">
+                  <span className="text-white">Full conservation</span>
+                  <span className="text-[12px] ml-2" style={{ color: "var(--text-muted)" }}>
+                    (mass + charge match between reactants and products)
+                  </span>
+                </td>
                 <td className="py-3 text-right font-mono text-green-400">{result.summary.supervised_full_pct}%</td>
                 <td className="py-3 text-right font-mono text-red-400">{result.summary.unsupervised_full_pct}%</td>
-                <td className="py-3 text-right font-mono text-white">
-                  +{(result.summary.supervised_full_pct - result.summary.unsupervised_full_pct).toFixed(1)}pp
-                </td>
+                <td className="py-3 text-right font-mono text-white">+{fullDelta}%</td>
               </tr>
             </tbody>
           </table>
 
-          <p className="text-[13px] leading-relaxed" style={{ color: "var(--text-muted)" }}>
-            If you ran Train weights on the Training page (hidden dim 64), the server loads that checkpoint
-            here automatically. Otherwise weights are freshly random per seed. The supervisor still adds a
-            safety layer on top of whatever the network outputs.
-          </p>
+          {/* ── Footer note ── */}
+          <div className="rounded-lg p-4" style={{ background: "rgba(34,197,94,0.04)" }}>
+            <p className="text-[13px] leading-relaxed" style={{ color: "var(--text-muted)" }}>
+              💡 <span className="text-white">Tip:</span> Train the GNN first on the{" "}
+              <span className="text-white">Training</span> page — the trained weights are loaded here
+              automatically when hidden dim matches. A trained model + supervisor together gives the best results.
+            </p>
+          </div>
         </>
       )}
     </div>
   );
 }
 
-function BarPair({ label, supervised, unsupervised }) {
+function BarPair({ label, sublabel, supervised, unsupervised }) {
   return (
     <div>
-      <span className="text-[14px] text-white block mb-4">{label}</span>
+      <span className="text-[14px] text-white block mb-1">{label}</span>
+      {sublabel && (
+        <span className="text-[12px] block mb-3" style={{ color: "var(--text-muted)" }}>{sublabel}</span>
+      )}
       <div className="space-y-3">
         <div>
           <div className="flex justify-between text-[13px] mb-1.5">
-            <span style={{ color: "var(--text-secondary)" }}>Supervised</span>
+            <span className="text-green-400">With supervisor</span>
             <span className="font-mono text-white">{supervised}%</span>
           </div>
           <div className="h-2 rounded-full" style={{ background: "var(--border)" }}>
@@ -153,7 +203,7 @@ function BarPair({ label, supervised, unsupervised }) {
         </div>
         <div>
           <div className="flex justify-between text-[13px] mb-1.5">
-            <span style={{ color: "var(--text-secondary)" }}>Unsupervised</span>
+            <span className="text-red-400">Without supervisor</span>
             <span className="font-mono text-white">{unsupervised}%</span>
           </div>
           <div className="h-2 rounded-full" style={{ background: "var(--border)" }}>
@@ -167,17 +217,17 @@ function BarPair({ label, supervised, unsupervised }) {
 
 function RunScatter({ runs }) {
   const n = runs.length;
-  const pad = { top: 16, right: 8, bottom: 24, left: 80 };
+  const pad = { top: 16, right: 8, bottom: 24, left: 130 };
   const dotR = Math.min(5, Math.max(3, 180 / n));
-  const w = Math.max(300, n * (dotR * 2 + 2) + pad.left + pad.right);
+  const w = Math.max(400, n * (dotR * 2 + 2) + pad.left + pad.right);
   const rowH = 32;
   const h = pad.top + rowH * 4 + pad.bottom;
 
   const rows = [
-    { key: "supervised_valency", label: "Sup. valency" },
-    { key: "supervised_conservation", label: "Sup. full" },
-    { key: "unsupervised_valency", label: "Unsup. valency" },
-    { key: "unsupervised_conservation", label: "Unsup. full" },
+    { key: "supervised_valency",      label: "With supervisor — bonds" },
+    { key: "supervised_conservation", label: "With supervisor — conservation" },
+    { key: "unsupervised_valency",      label: "Without supervisor — bonds" },
+    { key: "unsupervised_conservation", label: "Without supervisor — conservation" },
   ];
 
   return (
@@ -197,7 +247,7 @@ function RunScatter({ runs }) {
                 return (
                   <circle key={i} cx={x} cy={y} r={dotR}
                     fill={valid ? "#22c55e" : "#ef4444"} fillOpacity={0.75}>
-                    <title>Seed {r.seed}: {valid ? "valid" : "invalid"}</title>
+                    <title>Trial {i + 1} (seed {r.seed}): {valid ? "✓ valid" : "✗ invalid"}</title>
                   </circle>
                 );
               })}

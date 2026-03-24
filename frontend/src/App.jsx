@@ -36,29 +36,6 @@ export default function App() {
     return () => window.removeEventListener("chemcsp-reload-info", refresh);
   }, []);
 
-  const renderPage = () => {
-    switch (page) {
-      case "overview":
-        return <Overview info={info} onNavigate={setPage} />;
-      case "lab":
-        return <MoleculeLab presets={presets} />;
-      case "checker":
-        return <ConstraintChecker presets={presets} />;
-      case "supervisor":
-        return <SupervisorPage presets={presets} />;
-      case "training":
-        return <TrainingPage presets={presets} />;
-      case "benchmark":
-        return <BenchmarkPage presets={presets} />;
-      case "simulation":
-        return <MonteCarloPage presets={presets} />;
-      case "pathways":
-        return <PathwayPage presets={presets} />;
-      default:
-        return null;
-    }
-  };
-
   return (
     <div className="h-screen flex flex-col" style={{ background: "var(--bg)" }}>
       <header className="shrink-0 border-b" style={{ borderColor: "var(--border)" }}>
@@ -100,8 +77,33 @@ export default function App() {
         </div>
       </header>
       <main className="flex-1 overflow-auto page-transition">
-        {renderPage()}
+        {/* All pages stay mounted so local state (results, graphs) persists across tab switches */}
+        <div style={{ display: page === "overview" ? "block" : "none" }}>
+          <Overview info={info} onNavigate={setPage} />
+        </div>
+        <div style={{ display: page === "lab" ? "block" : "none" }}>
+          <MoleculeLab presets={presets} />
+        </div>
+        <div style={{ display: page === "checker" ? "block" : "none" }}>
+          <ConstraintChecker presets={presets} />
+        </div>
+        <div style={{ display: page === "supervisor" ? "block" : "none" }}>
+          <SupervisorPage presets={presets} />
+        </div>
+        <div style={{ display: page === "training" ? "block" : "none" }}>
+          <TrainingPage presets={presets} />
+        </div>
+        <div style={{ display: page === "benchmark" ? "block" : "none" }}>
+          <BenchmarkPage presets={presets} />
+        </div>
+        <div style={{ display: page === "simulation" ? "block" : "none" }}>
+          <MonteCarloPage presets={presets} />
+        </div>
+        <div style={{ display: page === "pathways" ? "block" : "none" }}>
+          <PathwayPage presets={presets} />
+        </div>
       </main>
     </div>
   );
 }
+

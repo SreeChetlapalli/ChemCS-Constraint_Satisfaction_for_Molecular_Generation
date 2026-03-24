@@ -49,23 +49,16 @@ export default function TrainingPage({ presets }) {
 
   return (
     <div className="max-w-[1200px] mx-auto px-6 py-10">
-      <h1 className="text-[28px] font-semibold text-white mb-2">Model Training</h1>
-      <p className="text-[15px] mb-3" style={{ color: "var(--text-secondary)" }}>
-        Train the GNN weights with gradient descent, or search for better random seeds without changing weights.
-      </p>
-      <p className="text-[13px] mb-10 max-w-[750px] leading-relaxed" style={{ color: "var(--text-muted)" }}>
-        The generative core is a graph neural network. Use <span className="text-white">Train weights</span> to run
-        PyTorch Adam on a denoising objective over preset molecules and reaction products. The checkpoint is saved
-        under <span className="font-mono text-neutral-400">checkpoints/diffusion_weights.pt</span> and is loaded
-        automatically for Supervisor, Benchmark, Simulation, and Pathways when <span className="font-mono">hidden_dim</span> matches.
-        Evolutionary training below only mutates RNG seeds and does not update weights.
+      <h1 className="text-[28px] font-semibold text-white mb-2">Training</h1>
+      <p className="text-[15px] mb-10" style={{ color: "var(--text-secondary)" }}>
+        Update GNN weights via gradient descent, or search for optimal seeds without modifying weights.
+        Checkpoint is saved to <span className="font-mono text-neutral-400">checkpoints/diffusion_weights.pt</span>.
       </p>
 
       <div className="mb-12 pb-10 border-b" style={{ borderColor: "var(--border)" }}>
-        <h2 className="text-[18px] font-medium text-white mb-2">Train GNN weights (gradient descent)</h2>
+        <h2 className="text-[18px] font-medium text-white mb-2">Gradient descent</h2>
         <p className="text-[13px] mb-6 max-w-[700px]" style={{ color: "var(--text-muted)" }}>
-          Uses every preset molecule and reaction product as training graphs. After training, refresh the app header
-          or reload the page to see the GNN badge.
+          PyTorch Adam on a denoising objective over preset molecules.
         </p>
         <div className="flex items-end gap-4 flex-wrap mb-4">
           {[
@@ -113,10 +106,9 @@ export default function TrainingPage({ presets }) {
         )}
       </div>
 
-      <h2 className="text-[18px] font-medium text-white mb-2">Evolutionary seed search (no weight updates)</h2>
+      <h2 className="text-[18px] font-medium text-white mb-2">Evolutionary seed search</h2>
       <p className="text-[13px] mb-6 max-w-[700px]" style={{ color: "var(--text-muted)" }}>
-        Spawns models with different random seeds, scores them through the supervised pipeline, and keeps the best seeds.
-        This does not change network weights; use Train weights above for that.
+        Scores models with different random seeds through the supervisor. No weight updates.
       </p>
 
       {presets && <ReactionPicker presets={presets} value={reaction} onChange={setReaction} />}

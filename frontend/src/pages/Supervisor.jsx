@@ -70,15 +70,9 @@ export default function SupervisorPage({ presets }) {
   return (
     <div className="max-w-[1200px] mx-auto px-6 py-10">
       <h1 className="text-[28px] font-semibold text-white mb-2">Supervisor</h1>
-      <p className="text-[15px] mb-3" style={{ color: "var(--text-secondary)" }}>
-        Run the constrained diffusion loop and watch molecules get built step by step.
-      </p>
-      <p className="text-[13px] mb-8 max-w-[750px] leading-relaxed" style={{ color: "var(--text-muted)" }}>
-        A graph neural network proposes molecular structures through a diffusion process. At each
-        denoising step the constraint engine checks valency limits, charge conservation, and bond
-        validity, then fixes anything that breaks the rules before moving on. You can scrub through
-        the timeline to see how the molecule changed at each step. Pick a reaction and tweak the
-        parameters below to try it out.
+      <p className="text-[15px] mb-8" style={{ color: "var(--text-secondary)" }}>
+        Constrained reverse diffusion. The GNN denoises while the constraint engine
+        validates and corrects each step against valency, charge, and bond rules.
       </p>
 
       {presets && <ReactionPicker presets={presets} value={reaction} onChange={setReaction} />}

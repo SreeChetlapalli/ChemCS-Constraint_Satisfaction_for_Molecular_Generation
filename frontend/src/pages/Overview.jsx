@@ -10,9 +10,8 @@ export default function Overview({ info, onNavigate }) {
           for molecular generation
         </h1>
         <p className="text-lg leading-relaxed max-w-[520px]" style={{ color: "var(--text-secondary)" }}>
-          A runtime supervisor that wraps AI-driven diffusion models,
-          enforcing mass conservation, charge balance, and valency bounds
-          at every denoising step.
+          Runtime constraint enforcement over a GNN diffusion model.
+          Mass, charge, and valency are checked at every denoising step.
         </p>
       </div>
 
@@ -35,13 +34,13 @@ export default function Overview({ info, onNavigate }) {
         <h2 className="text-[22px] font-semibold text-white mb-8">Tools</h2>
         <div className="space-y-0 border-t" style={{ borderColor: "var(--border)" }}>
           {[
-            { id: "lab", label: "Molecule Lab", desc: "Build molecules by hand with live valency checks and a 3D preview." },
-            { id: "checker", label: "Constraint Checker", desc: "Type a reaction or pick a preset and check it against the conservation rules." },
-            { id: "supervisor", label: "Supervisor", desc: "Run the diffusion loop and scrub through each generation step." },
-            { id: "training", label: "Model Training", desc: "Evolve model seeds over generations and track which ones produce valid molecules." },
-            { id: "benchmark", label: "Benchmark", desc: "Run the same reaction with and without the constraint supervisor and compare." },
-            { id: "simulation", label: "Simulation", desc: "Generate hundreds of molecules at once and look at the results statistically." },
-            { id: "pathways", label: "Pathways", desc: "Line up multiple reactions where each step's product becomes the next step's input." },
+            { id: "lab", label: "Molecule Lab", desc: "Interactive 2D editor with live valency checks and 3D preview." },
+            { id: "checker", label: "Constraint Checker", desc: "Verify reactions against mass, charge, and valency constraints." },
+            { id: "supervisor", label: "Supervisor", desc: "Step-by-step constrained diffusion with timeline scrubbing." },
+            { id: "training", label: "Model Training", desc: "Gradient descent on the GNN or evolutionary seed search." },
+            { id: "benchmark", label: "Benchmark", desc: "Side-by-side: supervised vs unsupervised generation." },
+            { id: "simulation", label: "Simulation", desc: "Batch generation with statistical analysis across seeds." },
+            { id: "pathways", label: "Pathways", desc: "Multi-step synthesis — products feed into the next reaction." },
           ].map(({ id, label, desc }) => (
             <button
               key={id}
@@ -69,22 +68,22 @@ export default function Overview({ info, onNavigate }) {
         <div>
           <h3 className="text-[15px] font-medium text-white mb-3">Diffusion Model</h3>
           <p className="text-[14px] leading-relaxed" style={{ color: "var(--text-secondary)" }}>
-            NumPy-based graph neural network with two message-passing layers.
-            Predicts atom features and bond adjacency. No PyTorch required.
+            Two-layer GNN in NumPy. Predicts atom features and bond
+            adjacency through reverse diffusion. PyTorch used only for training.
           </p>
         </div>
         <div>
           <h3 className="text-[15px] font-medium text-white mb-3">Constraint Verifier</h3>
           <p className="text-[14px] leading-relaxed" style={{ color: "var(--text-secondary)" }}>
-            Z3 SMT solver for formal proofs with automatic pure-Python fallback.
-            Sub-millisecond per check.
+            Z3 SMT solver with pure-Python fallback.
+            Sub-millisecond verification per molecule.
           </p>
         </div>
         <div>
           <h3 className="text-[15px] font-medium text-white mb-3">Supervisor Loop</h3>
           <p className="text-[14px] leading-relaxed" style={{ color: "var(--text-secondary)" }}>
-            Per-step validation with targeted corrections: valency reduction,
-            hydrogen adjustment, or full state backtracking.
+            Per-step validation with targeted corrections and
+            state backtracking when corrections fail.
           </p>
         </div>
       </div>
