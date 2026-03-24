@@ -204,3 +204,138 @@ def default_checkpoint_path() -> str:
         os.path.join(os.path.dirname(__file__), "..", "..", "..", "checkpoints")
     )
     return os.path.join(root, "diffusion_weights.pt")
+
+
+# ---------------------------------------------------------------------------
+# Built-in training dataset
+# ---------------------------------------------------------------------------
+
+def default_training_molecules() -> List[MolecularState]:
+    """
+    Return a diverse set of common small molecules for training.
+
+    Each molecule is specified with explicit bond counts (no implicit H
+    in the heavy-atom representation — implicit_h is set where needed so
+    that valency is satisfied).
+    """
+    specs: List[Tuple[str, List[Tuple[str, int, int, int]]]] = [
+        # (name, [(element, bonds, formal_charge, implicit_h), ...])
+        ("Water",        [("O", 2, 0, 0), ("H", 1, 0, 0), ("H", 1, 0, 0)]),
+        ("Methane",      [("C", 4, 0, 0), ("H", 1, 0, 0), ("H", 1, 0, 0),
+                          ("H", 1, 0, 0), ("H", 1, 0, 0)]),
+        ("Ammonia",      [("N", 3, 0, 0), ("H", 1, 0, 0), ("H", 1, 0, 0),
+                          ("H", 1, 0, 0)]),
+        ("HF",           [("H", 1, 0, 0), ("F", 1, 0, 0)]),
+        ("HCl",          [("H", 1, 0, 0), ("Cl", 1, 0, 0)]),
+        ("CO2",          [("C", 4, 0, 0), ("O", 2, 0, 0), ("O", 2, 0, 0)]),
+        ("Formaldehyde", [("C", 4, 0, 0), ("O", 2, 0, 0),
+                          ("H", 1, 0, 0), ("H", 1, 0, 0)]),
+        ("Methanol",     [("C", 4, 0, 0), ("O", 2, 0, 0),
+                          ("H", 1, 0, 0), ("H", 1, 0, 0),
+                          ("H", 1, 0, 0), ("H", 1, 0, 0)]),
+        ("Ethane",       [("C", 4, 0, 0), ("C", 4, 0, 0),
+                          ("H", 1, 0, 0), ("H", 1, 0, 0), ("H", 1, 0, 0),
+                          ("H", 1, 0, 0), ("H", 1, 0, 0), ("H", 1, 0, 0)]),
+        ("Ethanol",      [("C", 4, 0, 0), ("C", 4, 0, 0), ("O", 2, 0, 0),
+                          ("H", 1, 0, 0), ("H", 1, 0, 0), ("H", 1, 0, 0),
+                          ("H", 1, 0, 0), ("H", 1, 0, 0), ("H", 1, 0, 0)]),
+        ("Ethylene",     [("C", 4, 0, 0), ("C", 4, 0, 0),
+                          ("H", 1, 0, 0), ("H", 1, 0, 0),
+                          ("H", 1, 0, 0), ("H", 1, 0, 0)]),
+        ("Acetylene",    [("C", 4, 0, 0), ("C", 4, 0, 0),
+                          ("H", 1, 0, 0), ("H", 1, 0, 0)]),
+        ("Acetic acid",  [("C", 4, 0, 0), ("C", 4, 0, 0), ("O", 2, 0, 0),
+                          ("O", 2, 0, 0), ("H", 1, 0, 0), ("H", 1, 0, 0),
+                          ("H", 1, 0, 0), ("H", 1, 0, 0)]),
+        ("HBr",          [("H", 1, 0, 0), ("Br", 1, 0, 0)]),
+        ("CH3Br",        [("C", 4, 0, 0), ("Br", 1, 0, 0),
+                          ("H", 1, 0, 0), ("H", 1, 0, 0), ("H", 1, 0, 0)]),
+        ("CH3OH",        [("C", 4, 0, 0), ("O", 2, 0, 0),
+                          ("H", 1, 0, 0), ("H", 1, 0, 0),
+                          ("H", 1, 0, 0), ("H", 1, 0, 0)]),
+        ("Br-",          [("Br", 0, -1, 0)]),
+        ("OH-",          [("O", 1, -1, 0), ("H", 1, 0, 0)]),
+        ("NH4+",         [("N", 4, 1, 0), ("H", 1, 0, 0), ("H", 1, 0, 0),
+                          ("H", 1, 0, 0), ("H", 1, 0, 0)]),
+        ("H2S",          [("S", 2, 0, 0), ("H", 1, 0, 0), ("H", 1, 0, 0)]),
+    ]
+    mols: List[MolecularState] = []
+    for name, atom_defs in specs:
+        atoms = [
+            Atom(element=el, bonds=b, formal_charge=fc, implicit_h=ih)
+            for el, b, fc, ih in atom_defs
+        ]
+        mols.append(MolecularState(name=name, atoms=atoms))
+    return mols
+
+
+# ---------------------------------------------------------------------------
+# Convenience: train and export in one call
+# ---------------------------------------------------------------------------
+
+def train_and_export(
+    molecules: Optional[List[MolecularState]] = None,
+    hidden_dim: int = 64,
+    T: int = 20,
+    epochs: int = 40,
+    lr: float = 1e-3,
+    steps_per_epoch: int = 80,
+    seed: int = 42,
+    device: Optional[torch.device] = None,
+    verbose: bool = True,
+) -> Tuple[MolecularDiffusionModel, List[float]]:
+    """
+    Train the PyTorch GNN on a denoising objective, then export the learned
+    weights into a NumPy ``MolecularDiffusionModel`` ready for supervised
+    generation.
+
+    Parameters
+    ----------
+    molecules : list of MolecularState, optional
+        Training data.  Defaults to ``default_training_molecules()``.
+    hidden_dim, T, epochs, lr, steps_per_epoch, seed :
+        Forwarded to ``train_diffusion_weights``.
+    device : torch.device, optional
+        Forwarded to ``train_diffusion_weights``.
+    verbose : bool
+        If True, print epoch-level loss summaries.
+
+    Returns
+    -------
+    (npm, loss_history)
+        npm is the NumPy MolecularDiffusionModel with trained weights.
+        loss_history is a list of per-epoch average losses.
+    """
+    if molecules is None:
+        molecules = default_training_molecules()
+
+    if verbose:
+        print(f"  Training on {len(molecules)} molecules for {epochs} epochs "
+              f"(hidden={hidden_dim}, T={T}, lr={lr}) ...")
+
+    loss_history, net = train_diffusion_weights(
+        molecules,
+        hidden_dim=hidden_dim,
+        T=T,
+        epochs=epochs,
+        lr=lr,
+        steps_per_epoch=steps_per_epoch,
+        seed=seed,
+        device=device,
+    )
+
+    if verbose:
+        print(f"  Epoch  1 loss: {loss_history[0]:.4f}")
+        mid = len(loss_history) // 2
+        if mid > 0:
+            print(f"  Epoch {mid+1:2d} loss: {loss_history[mid]:.4f}")
+        print(f"  Epoch {len(loss_history):2d} loss: {loss_history[-1]:.4f}")
+
+    # Export into NumPy model
+    npm = MolecularDiffusionModel(hidden_dim=hidden_dim, seed=seed)
+    export_torch_to_numpy(net, npm)
+
+    if verbose:
+        print("  Weights exported to NumPy model.")
+
+    return npm, loss_history

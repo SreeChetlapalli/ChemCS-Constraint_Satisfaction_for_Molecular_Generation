@@ -191,7 +191,131 @@ def demo_benchmark(n: int = 50):
     print()
     print("  Note: the supervisor focuses on per-step valency consistency.")
     print("  Mass/charge conservation depends on how well the model is trained.")
-    print("  See notebooks/demo.ipynb to train and observe improving full validity.")
+    print("  See Part 4 below to train and observe improving full validity.")
+
+
+# ---------------------------------------------------------------------------
+# Part 4: Train, then generate with learned weights
+# ---------------------------------------------------------------------------
+
+def demo_train_then_generate(n_benchmark: int = 30):
+    """Train the model via gradient descent, then generate and compare."""
+    print(f"\n{SEP}")
+    print("  PART 4 — Train-then-Generate (gradient descent + constraint satisfaction)")
+    print(SEP)
+
+    from chemistry_constraint_satisfaction.diffusion.trainer import (
+        train_and_export, default_training_molecules,
+    )
+    from chemistry_constraint_satisfaction.diffusion.model import encode_molecule
+    from chemistry_constraint_satisfaction.constraints import check_intermediate, check_reaction
+
+    reactants = [ch3br(), oh_minus()]
+
+    # ---- Step 1: Train the model ----
+    print("\n  Step 1: Training the denoising GNN ...")
+    trained_model, loss_history = train_and_export(
+        molecules=default_training_molecules(),
+        hidden_dim=64,
+        T=20,
+        epochs=40,
+        lr=1e-3,
+        steps_per_epoch=80,
+        seed=42,
+        verbose=True,
+    )
+    print(f"\n  Loss decreased: {loss_history[0]:.4f} -> {loss_history[-1]:.4f} "
+          f"({(1 - loss_history[-1]/loss_history[0])*100:.1f}% reduction)")
+
+    # ---- Step 2: Generate with the trained model ----
+    print(f"\n  Step 2: Supervised generation with TRAINED model")
+    sup = Supervisor(
+        trained_model,
+        reactants=reactants,
+        T=20,
+        max_retries=3,
+        max_backtracks=5,
+        verbose=True,
+        prefer_z3=Z3_AVAILABLE,
+    )
+    result = sup.run()
+
+    print("\n  Product atoms:")
+    for i, atom in enumerate(result.product.atoms):
+        print(f"    [{i}] {atom.element:3s}  bonds={atom.bonds}  "
+              f"implicit_H={atom.implicit_h}  charge={atom.formal_charge:+d}")
+
+    # ---- Step 3: Three-way benchmark ----
+    print(f"\n  Step 3: Benchmark over {n_benchmark} runs  —  three configurations")
+    print(f"    A) Trained model + supervisor (constraint satisfaction)")
+    print(f"    B) Random model + supervisor (constraint satisfaction, no learning)")
+    print(f"    C) Random model, NO supervisor (raw diffusion)")
+    print()
+
+    trained_sup_val = trained_sup_full = 0
+    random_sup_val  = random_sup_full  = 0
+    raw_val         = raw_full         = 0
+
+    for i in range(n_benchmark):
+        # --- A) Trained + supervised ---
+        r_a = Supervisor(
+            trained_model, reactants, T=10, max_retries=2, max_backtracks=3,
+            verbose=False, prefer_z3=False,
+        ).run()
+        if check_intermediate(r_a.product).sat:
+            trained_sup_val += 1
+        if r_a.success:
+            trained_sup_full += 1
+
+        # --- B) Random + supervised ---
+        m_b = MolecularDiffusionModel(hidden_dim=32, seed=i)
+        r_b = Supervisor(
+            m_b, reactants, T=10, max_retries=2, max_backtracks=3,
+            verbose=False, prefer_z3=False,
+        ).run()
+        if check_intermediate(r_b.product).sat:
+            random_sup_val += 1
+        if r_b.success:
+            random_sup_full += 1
+
+        # --- C) Raw (no supervisor) ---
+        m_c = MolecularDiffusionModel(hidden_dim=32, seed=i)
+        init_atoms = []
+        for mol in reactants:
+            init_atoms.extend(mol.atoms)
+        init_mol = MolecularState("init", init_atoms)
+        x, adj = encode_molecule(init_mol)
+        x_n, adj_n = m_c.forward_noisy(x, adj, t=10, T=10)
+        for t in range(10, 0, -1):
+            x_n, adj_n = m_c.reverse_step(x_n, adj_n, t=t, T=10)
+        raw_product = m_c.decode(x_n, adj_n, name="raw")
+        if check_intermediate(raw_product).sat:
+            raw_val += 1
+        if check_reaction(reactants, [raw_product], prefer_z3=False).sat:
+            raw_full += 1
+
+        if (i + 1) % 10 == 0:
+            print(f"    [{i+1:3d}/{n_benchmark}] done")
+
+    print(f"\n  {'='*60}")
+    print(f"  Results  ({n_benchmark} runs)")
+    print(f"  {'='*60}")
+    print(f"    {'Configuration':<35} {'Valency':>10}  {'Full Valid':>10}")
+    print(f"    {'-'*35}  {'-'*10}  {'-'*10}")
+    print(f"    {'Trained + Supervisor':<35} "
+          f"{trained_sup_val/n_benchmark*100:>8.1f}%  "
+          f"{trained_sup_full/n_benchmark*100:>8.1f}%")
+    print(f"    {'Random  + Supervisor':<35} "
+          f"{random_sup_val/n_benchmark*100:>8.1f}%  "
+          f"{random_sup_full/n_benchmark*100:>8.1f}%")
+    print(f"    {'Random  + NO Supervisor (raw)':<35} "
+          f"{raw_val/n_benchmark*100:>8.1f}%  "
+          f"{raw_full/n_benchmark*100:>8.1f}%")
+    print(f"  {'='*60}")
+    print()
+    print("  Key insight: Training teaches the model RIGHT patterns (gradient")
+    print("  descent), while constraint satisfaction ENFORCES correctness.")
+    print("  Together they achieve the highest accuracy.")
 
 
 # ---------------------------------------------------------------------------
@@ -202,6 +326,7 @@ if __name__ == "__main__":
     demo_constraints()
     result = demo_generation()
     demo_benchmark(n=50)
+    demo_train_then_generate(n_benchmark=30)
 
     print(f"\n{SEP}")
     print("  Done. For GPU-accelerated training, open notebooks/demo.ipynb")

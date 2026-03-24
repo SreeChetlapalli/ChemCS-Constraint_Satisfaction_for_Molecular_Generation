@@ -10,6 +10,7 @@ from .model import (
     ELEMENTS,
 )
 from .supervisor import Supervisor, GenerationResult, StepRecord, IntermediateSnapshot
+from .trainer import train_and_export, default_training_molecules
 
 __all__ = [
     "MolecularDiffusionModel",
@@ -22,4 +23,7 @@ __all__ = [
     "Supervisor",
     "GenerationResult",
     "StepRecord",
+    "train_and_export",
+    "default_training_molecules",
 ]
+
