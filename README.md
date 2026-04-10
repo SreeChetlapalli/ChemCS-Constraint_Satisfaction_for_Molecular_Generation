@@ -298,13 +298,3 @@ See **[CONTRIBUTING.md](CONTRIBUTING.md)** for details.
 
 ---
 
-## Contributing & license
-
-- **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md)
-- **License:** Use and cite as appropriate for your institution. This project builds on open-source tools (e.g. PyTorch, Z3).
-
----
-
-## Publishing note
-
-If you fork this repo, update **`pyproject.toml`** `name` / `version` as needed before publishing to PyPI. The `[project.urls]` block is intentionally omitted so you can add your real repository URL when you publish.
