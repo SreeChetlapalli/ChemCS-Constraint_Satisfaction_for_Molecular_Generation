@@ -1,10 +1,4 @@
-"""
-Unit tests for the chemical constraint checkers.
-
-These cover mass conservation, charge conservation, and bond valency.
-The suite runs with or without Z3 installed (pure-Python fallback is tested
-as well).
-"""
+"""Tests for chemical constraint checkers (with and without Z3)."""
 
 import sys
 import os
@@ -148,7 +142,6 @@ class TestCheckIntermediate:
 # ===========================================================================
 
 class TestCheckReactionPurePython:
-    """These tests always use the pure-Python backend."""
 
     def _check(self, reactants, products, **kw):
         return _check_pure_python(reactants, products, **kw)
@@ -235,7 +228,6 @@ except ImportError:
 
 @pytest.mark.skipif(not _z3_imported, reason="z3-solver not installed")
 class TestCheckReactionZ3:
-    """Run the same logical checks but through the Z3 solver."""
 
     def test_sn2_valid_z3(self):
         cr = check_reaction(
@@ -261,6 +253,57 @@ class TestCheckReactionZ3:
             prefer_z3=True,
         )
         assert not cr.sat
+
+
+# ===========================================================================
+# Tests: atom conservation
+# ===========================================================================
+
+class TestAtomConservation:
+    def test_sn2_atoms_conserved(self):
+        """SN2 reaction conserves all element counts."""
+        cr = _check_pure_python(
+            [make_ch3br(), make_oh_minus()],
+            [make_ch3oh(), make_br_minus()],
+        )
+        assert cr.sat, cr.reason
+
+    def test_missing_bromine_detected(self):
+        """Dropping Br- from products should violate atom conservation."""
+        cr = _check_pure_python(
+            [make_ch3br(), make_oh_minus()],
+            [make_ch3oh()],
+        )
+        assert not cr.sat
+        assert any("Atom conservation" in v or "Br" in v for v in cr.violations)
+
+    def test_extra_hydrogen(self):
+        """Adding extra H atoms should be caught."""
+        extra_h = MolecularState("extra", atoms=[
+            Atom("C", bonds=4), Atom("O", bonds=2),
+            Atom("H", bonds=1), Atom("H", bonds=1),
+            Atom("H", bonds=1), Atom("H", bonds=1),
+            Atom("H", bonds=1),  # one extra H
+        ])
+        cr = _check_pure_python(
+            [make_ch3br(), make_oh_minus()],
+            [extra_h, make_br_minus()],
+        )
+        assert not cr.sat
+        assert any("H" in v for v in cr.violations)
+
+    def test_element_counts_method(self):
+        mol = make_ch3br()
+        counts = mol.element_counts()
+        assert counts["C"] == 1
+        assert counts["Br"] == 1
+        assert counts["H"] == 3
+
+    def test_element_counts_with_implicit_h(self):
+        mol = MolecularState("test", [Atom("C", bonds=2, implicit_h=2)])
+        counts = mol.element_counts()
+        assert counts["C"] == 1
+        assert counts["H"] == 2
 
 
 # ===========================================================================

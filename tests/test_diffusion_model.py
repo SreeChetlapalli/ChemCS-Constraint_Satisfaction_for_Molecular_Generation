@@ -1,9 +1,4 @@
-"""
-tests/test_diffusion_model.py
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Tests for the molecular diffusion model (MolecularDiffusionModel).
-All tests run on CPU with numpy — no GPU required.
-"""
+"""Tests for MolecularDiffusionModel (numpy, CPU only)."""
 
 import sys
 import os
@@ -219,3 +214,57 @@ class TestGNN:
         h = np.random.randn(3, model.hidden_dim).astype(np.float32)
         out = model.atom_head(h)
         assert out.shape == (3, ATOM_FEAT_DIM)
+
+
+# ===========================================================================
+# Tests: cosine noise schedule
+# ===========================================================================
+
+class TestCosineSchedule:
+    def test_cosine_alpha_bar_decreases(self):
+        m = MolecularDiffusionModel(hidden_dim=16, seed=0, schedule="cosine")
+        vals = [m._alpha_bar_cached(t, 50) for t in range(51)]
+        assert all(vals[i] >= vals[i+1] - 1e-6 for i in range(50))
+
+    def test_cosine_at_zero_is_one(self):
+        assert MolecularDiffusionModel._alpha_bar_cosine(0, 100) == pytest.approx(1.0, abs=0.01)
+
+    def test_cosine_at_T_near_zero(self):
+        assert MolecularDiffusionModel._alpha_bar_cosine(100, 100) < 0.05
+
+    def test_cosine_model_produces_output(self, simple_mol):
+        m = MolecularDiffusionModel(hidden_dim=16, seed=0, schedule="cosine")
+        x, adj = encode_molecule(simple_mol)
+        x_n, adj_n = m.forward_noisy(x, adj, t=5, T=50)
+        x_prev, adj_prev = m.reverse_step(x_n, adj_n, t=5, T=50)
+        assert x_prev.shape == x.shape
+
+
+# ===========================================================================
+# Tests: save / load
+# ===========================================================================
+
+class TestSaveLoad:
+    def test_save_and_load_roundtrip(self, simple_mol, tmp_path):
+        m = MolecularDiffusionModel(hidden_dim=16, seed=42)
+        save_path = tmp_path / "model.npz"
+        m.save(save_path)
+        m2 = MolecularDiffusionModel.load(save_path)
+        assert m2.hidden_dim == 16
+        np.testing.assert_array_almost_equal(m.gc1.W_self.W, m2.gc1.W_self.W)
+        np.testing.assert_array_almost_equal(m.atom_head.W, m2.atom_head.W)
+
+    def test_loaded_model_produces_same_output(self, simple_mol, tmp_path):
+        m = MolecularDiffusionModel(hidden_dim=16, seed=42)
+        x, adj = encode_molecule(simple_mol)
+        x_n, adj_n = m.forward_noisy(x, adj, t=5, T=50)
+        x_out1, _ = m.reverse_step(x_n.copy(), adj_n.copy(), t=5, T=50)
+
+        save_path = tmp_path / "model.npz"
+        m.save(save_path)
+        m2 = MolecularDiffusionModel.load(save_path)
+        m2._rng = np.random.default_rng(m._rng.bit_generator.state["state"]["state"])
+        x_out2, _ = m2.reverse_step(x_n.copy(), adj_n.copy(), t=5, T=50)
+        np.testing.assert_array_almost_equal(
+            m2.atom_head.W, m.atom_head.W
+        )

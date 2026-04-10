@@ -1,21 +1,19 @@
 """
-Supervisor loop for the diffusion model.
-
-At each reverse step it decodes the candidate into a `MolecularState`, checks
-the chemistry constraints, and either commits the step, tries a small fix,
-or backtracks and re-samples.
+Supervisor loop -- wraps the diffusion model and enforces chemistry
+constraints at every reverse step (commit / fix / backtrack).
 """
 
 from __future__ import annotations
 
 import dataclasses
 import time
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
 import numpy as np
 
 from ..constraints.chemical_axioms import (
     MolecularState, ConstraintResult, check_intermediate, check_reaction,
+    ATOMIC_MASS,
 )
 from .model import MolecularDiffusionModel, encode_molecule
 
@@ -26,7 +24,6 @@ from .model import MolecularDiffusionModel, encode_molecule
 
 @dataclasses.dataclass
 class StepRecord:
-    """One entry in the per-step log."""
     t: int
     attempt: int
     constraint_result: ConstraintResult
@@ -36,7 +33,6 @@ class StepRecord:
 
 @dataclasses.dataclass
 class GenerationResult:
-    """Result returned by `Supervisor.run()`."""
     product: MolecularState
     reactants: List[MolecularState]
     final_check: ConstraintResult
@@ -49,17 +45,38 @@ class GenerationResult:
     def success(self) -> bool:
         return self.final_check.sat
 
+    @property
+    def metrics(self) -> Dict[str, float]:
+        n_steps = len(self.step_log) or 1
+        commits = sum(1 for s in self.step_log if s.action == "commit")
+        corrected = sum(1 for s in self.step_log if s.action == "corrected")
+        skips = sum(1 for s in self.step_log if s.action == "skip")
+        avg_ms = sum(s.elapsed_ms for s in self.step_log) / n_steps
+        return {
+            "valid": float(self.success),
+            "commits": commits,
+            "corrections": corrected,
+            "backtracks": self.total_backtracks,
+            "skips": skips,
+            "avg_step_ms": round(avg_ms, 2),
+            "wall_time_s": round(self.wall_time_s, 3),
+            "commit_rate": round(commits / n_steps, 3),
+        }
+
     def summary(self) -> str:
+        m = self.metrics
         lines = [
             "=" * 60,
             "  Supervisor - Generation Summary",
             "=" * 60,
-            f"  Product     : {self.product.name}",
-            f"  Atoms       : {len(self.product.atoms)}",
-            f"  Valid       : {'YES' if self.success else 'NO'}",
-            f"  Backtracks  : {self.total_backtracks}",
-            f"  Corrections : {self.total_corrections}",
-            f"  Wall time   : {self.wall_time_s:.3f}s",
+            f"  Product      : {self.product.name}",
+            f"  Atoms        : {len(self.product.atoms)}",
+            f"  Valid        : {'YES' if self.success else 'NO'}",
+            f"  Backtracks   : {self.total_backtracks}",
+            f"  Corrections  : {self.total_corrections}",
+            f"  Commit rate  : {m['commit_rate']:.1%}",
+            f"  Avg step     : {m['avg_step_ms']:.1f} ms",
+            f"  Wall time    : {self.wall_time_s:.3f}s",
             "",
             "  Constraint check:",
         ]
@@ -77,9 +94,6 @@ class GenerationResult:
 # ---------------------------------------------------------------------------
 
 def _fix_valency(mol: MolecularState) -> MolecularState:
-    """
-    Reduce bonds on atoms that exceed their allowed valency.
-    """
     fixed_atoms = []
     for atom in mol.atoms:
         if atom.total_bonds > atom.effective_valency:
@@ -97,9 +111,6 @@ def _fix_mass(
     target_mass: float,
     tolerance: float = 0.02,
 ) -> MolecularState:
-    """
-    Adjust implicit hydrogen so total mass moves toward the target.
-    """
     from ..constraints.chemical_axioms import ATOMIC_MASS
     current = mol.total_mass()
     delta   = target_mass - current
@@ -125,23 +136,37 @@ def _fix_mass(
     return MolecularState(atoms=atoms, name=mol.name)
 
 
+def _fix_charge(
+    mol: MolecularState,
+    target_charge: int,
+) -> MolecularState:
+    """Shift formal charges (lightest atoms first) until net charge == target.
+    Pretty crude heuristic but better than doing nothing."""
+    current = mol.total_charge()
+    delta = target_charge - current
+    if delta == 0:
+        return mol
+
+    atoms = [dataclasses.replace(a) for a in mol.atoms]
+    sorted_idx = sorted(range(len(atoms)),
+                        key=lambda i: ATOMIC_MASS.get(atoms[i].element, 999))
+
+    for idx in sorted_idx:
+        if delta == 0:
+            break
+        step = 1 if delta > 0 else -1
+        atoms[idx].formal_charge += step
+        delta -= step
+
+    return MolecularState(atoms=atoms, name=mol.name)
+
+
 # ---------------------------------------------------------------------------
 # Supervisor
 # ---------------------------------------------------------------------------
 
 class Supervisor:
-    """
-    Runs the diffusion model while enforcing chemistry checks at each step.
-
-    Parameters
-    ----------
-    model       : MolecularDiffusionModel
-    reactants   : list of MolecularState — used for mass / charge conservation
-    T           : total diffusion timesteps
-    max_retries : how many re-samples before giving up and backtracking
-    max_backtracks : safety limit on total backtracks per generation
-    verbose     : print step-by-step log to stdout
-    """
+    """Runs the diffusion model with chemistry checks at each step."""
 
     def __init__(
         self,
@@ -161,33 +186,24 @@ class Supervisor:
         self.verbose        = verbose
         self.prefer_z3      = prefer_z3
 
-        # Compute target mass and charge from reactants
         self._target_mass   = sum(m.total_mass()   for m in reactants)
+        self._target_charge = sum(m.total_charge() for m in reactants)
 
     # ------------------------------------------------------------------
     # Main entry point
     # ------------------------------------------------------------------
 
     def run(self) -> GenerationResult:
-        """
-        Run the full reverse diffusion loop.
-        """
         t0 = time.perf_counter()
         step_log: List[StepRecord] = []
         total_backtracks = 0
         total_corrections = 0
 
-        # ---- Initialise from reactants (concatenate atoms) -----------
         init_mol = self._build_initial_state()
         x, adj   = encode_molecule(init_mol)
-
-        # ---- Add maximum noise (t = T) to get x_T -------------------
         x_t, adj_t = self.model.forward_noisy(x, adj, self.T, self.T)
 
-        # Stack of committed states for backtracking
         history: List[Tuple[np.ndarray, np.ndarray]] = [(x_t.copy(), adj_t.copy())]
-
-        # ---- Reverse loop: T → 1 ------------------------------------
         t = self.T
         while t >= 1:
             step_start = time.perf_counter()
@@ -198,12 +214,9 @@ class Supervisor:
                 x_prev, adj_prev = self.model.reverse_step(x_t, adj_t, t, self.T)
                 candidate = self.model.decode(x_prev, adj_prev, name="intermediate")
 
-                # Mid-trajectory: check valency only (mass checked at end)
                 cr = check_intermediate(candidate)
 
-                # Final step: also check full reaction conservation
-                if t == 1:
-                    # Assign proper name and check conservation
+                if t == 1:  # final step -- full conservation check
                     candidate = MolecularState(
                         name="product", atoms=candidate.atoms,
                     )
@@ -226,17 +239,16 @@ class Supervisor:
                         self._log(t, action, cr, elapsed)
                     break
                 else:
-                    # Try a lightweight correction before next re-sample
                     if attempt <= self.max_retries:
                         candidate = _fix_valency(candidate)
                         if t == 1:
+                            candidate = _fix_charge(candidate, self._target_charge)
                             candidate = _fix_mass(candidate, self._target_mass)
                         cr2 = (
                             check_reaction(self.reactants, [candidate], prefer_z3=self.prefer_z3)
                             if t == 1 else check_intermediate(candidate)
                         )
                         if cr2.sat:
-                            # Correction worked — re-encode and commit
                             x_prev, adj_prev = encode_molecule(candidate)
                             x_t, adj_t = x_prev, adj_prev
                             history.append((x_t.copy(), adj_t.copy()))
@@ -254,12 +266,11 @@ class Supervisor:
                     print(f"  [t={t:3d}] BACKTRACK #{total_backtracks} -- violations: {cr.reason}")
                 if len(history) > 1:
                     failed_t = t
-                    history.pop()               # discard current
+                    history.pop()
                     x_t, adj_t = history[-1]
-                    t = min(t + 1, self.T)      # step back up one step
+                    t = min(t + 1, self.T)
                     step_log.append(StepRecord(failed_t, 0, cr, "backtrack", 0.0))
                 else:
-                    # Nowhere to backtrack — commit best effort
                     step_log.append(StepRecord(t, 0, cr, "skip", 0.0))
                     x_t, adj_t = x_prev, adj_prev
                     history.append((x_t.copy(), adj_t.copy()))
@@ -271,10 +282,7 @@ class Supervisor:
 
             t -= 1
 
-        # ---- Decode final state -------------------------------------
         product = self.model.decode(x_t, adj_t, name="product")
-
-        # ---- Final conservation check --------------------------------
         final_check = check_reaction(
             self.reactants, [product], prefer_z3=self.prefer_z3
         )
@@ -300,7 +308,6 @@ class Supervisor:
     # ------------------------------------------------------------------
 
     def _build_initial_state(self) -> MolecularState:
-        """Concatenate all reactant atoms into a single initial state."""
         atoms = []
         for mol in self.reactants:
             atoms.extend(mol.atoms)

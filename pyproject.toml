@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chemistry-constraint-satisfaction"
-version = "0.2.0"
+version = "0.3.0"
 description = "Constraint-checked molecular generation: Z3 + diffusion supervisor loop."
 readme = "README.md"
 requires-python = ">=3.10"

@@ -1,19 +1,17 @@
 """
-Chemical constraint checks.
+Chemical constraint checks -- mass, charge, valency, atom conservation.
 
-The supervisor uses these helpers to verify candidates against a few
-simple rules (mass, charge, and bond valency). When `z3` is available we
-can run the same checks with a solver; otherwise we fall back to a pure
-Python implementation.
+Has both a pure-Python backend and a Z3 one (used when z3 is installed).
 """
 
 from __future__ import annotations
 
 import dataclasses
+from collections import Counter
 from typing import Dict, List, Optional, Tuple
 
 # ---------------------------------------------------------------------------
-# Optional Z3 import — graceful fallback for environments without the solver
+# Optional Z3 import
 # ---------------------------------------------------------------------------
 try:
     import z3
@@ -71,7 +69,6 @@ CHARGE_VALENCY_DELTA: Dict[str, Dict[int, int]] = {
 
 @dataclasses.dataclass
 class Atom:
-    """Lightweight atom representation used by the constraint engine."""
     element: str
     bonds: int            # total bond order to other atoms
     formal_charge: int = 0
@@ -85,13 +82,11 @@ class Atom:
 
     @property
     def total_bonds(self) -> int:
-        """Bonds to heavy atoms + implicit hydrogens."""
         return self.bonds + self.implicit_h
 
 
 @dataclasses.dataclass
 class MolecularState:
-    """Snapshot of a (partial) molecule during diffusion."""
     name: str
     atoms: List[Atom]
 
@@ -104,6 +99,14 @@ class MolecularState:
 
     def total_charge(self) -> int:
         return sum(a.formal_charge for a in self.atoms)
+
+    def element_counts(self) -> Dict[str, int]:
+        counts: Dict[str, int] = {}
+        for atom in self.atoms:
+            counts[atom.element] = counts.get(atom.element, 0) + 1
+            if atom.implicit_h > 0:
+                counts["H"] = counts.get("H", 0) + atom.implicit_h
+        return counts
 
 
 @dataclasses.dataclass
@@ -131,10 +134,8 @@ def _check_pure_python(
     products: List[MolecularState],
     tolerance: float = 0.02,
 ) -> ConstraintResult:
-    """Check constraints without Z3."""
     violations: List[str] = []
 
-    # 1. Mass conservation
     r_mass = sum(m.total_mass() for m in reactants)
     p_mass = sum(m.total_mass() for m in products)
     if abs(r_mass - p_mass) > tolerance:
@@ -143,7 +144,6 @@ def _check_pure_python(
             f"products={p_mass:.3f} u, Δ={abs(r_mass-p_mass):.3f} u"
         )
 
-    # 2. Charge conservation
     r_charge = sum(m.total_charge() for m in reactants)
     p_charge = sum(m.total_charge() for m in products)
     if r_charge != p_charge:
@@ -152,7 +152,24 @@ def _check_pure_python(
             f"products={p_charge:+d}"
         )
 
-    # 3. Bond valency for each product atom
+    r_elems: Dict[str, int] = {}
+    for mol in reactants:
+        for elem, cnt in mol.element_counts().items():
+            r_elems[elem] = r_elems.get(elem, 0) + cnt
+    p_elems: Dict[str, int] = {}
+    for mol in products:
+        for elem, cnt in mol.element_counts().items():
+            p_elems[elem] = p_elems.get(elem, 0) + cnt
+    all_elems = set(r_elems) | set(p_elems)
+    for elem in sorted(all_elems):
+        r_cnt = r_elems.get(elem, 0)
+        p_cnt = p_elems.get(elem, 0)
+        if r_cnt != p_cnt:
+            violations.append(
+                f"Atom conservation: {elem} count differs "
+                f"(reactants={r_cnt}, products={p_cnt})"
+            )
+
     for mol in products:
         for atom in mol.atoms:
             if atom.total_bonds > atom.effective_valency:
@@ -173,22 +190,13 @@ def _check_z3(
     products: List[MolecularState],
     tolerance: float = 0.02,
 ) -> ConstraintResult:
-    """
-    Check constraints using Z3.
-
-    This version uses real arithmetic for mass and integer arithmetic for
-    charge and valency.
-    """
     if not Z3_AVAILABLE:
         raise RuntimeError("z3 is not installed; use _check_pure_python instead.")
 
     solver = z3.Solver()
     violations: List[str] = []
 
-    # Set up Z3 constraints. We treat the provided values as fixed facts and
-    # ask whether they violate the valency bounds.
-
-    # Mass conservation (Real arithmetic)
+    # Mass conservation
     r_mass_expr = z3.RealVal(0)
     for mol in reactants:
         for atom in mol.atoms:
@@ -203,12 +211,11 @@ def _check_z3(
 
     mass_diff = z3.simplify(r_mass_expr - p_mass_expr)
     tol = z3.RealVal(tolerance)
-    solver.add(z3.Or(mass_diff > tol, mass_diff < -tol))  # UNSAT means conserved
+    solver.add(z3.Or(mass_diff > tol, mass_diff < -tol))
 
     result_mass = solver.check()
     solver.reset()
     if result_mass == z3.sat:
-        # If the "violation" query is satisfiable, the masses differ too much.
         from fractions import Fraction
         r_val = float(Fraction(str(z3.simplify(r_mass_expr))))
         p_val = float(Fraction(str(z3.simplify(p_mass_expr))))
@@ -216,7 +223,6 @@ def _check_z3(
             f"Mass not conserved: reactants≈{r_val:.3f} u, products≈{p_val:.3f} u"
         )
 
-    # Charge conservation (Int arithmetic)
     r_chg = sum(sum(a.formal_charge for a in m.atoms) for m in reactants)
     p_chg = sum(sum(a.formal_charge for a in m.atoms) for m in products)
     if r_chg != p_chg:
@@ -224,13 +230,34 @@ def _check_z3(
             f"Charge not conserved: reactants={r_chg:+d}, products={p_chg:+d}"
         )
 
-    # Valency per atom (Int arithmetic)
+    r_elems: Dict[str, int] = {}
+    for mol in reactants:
+        for elem, cnt in mol.element_counts().items():
+            r_elems[elem] = r_elems.get(elem, 0) + cnt
+    p_elems: Dict[str, int] = {}
+    for mol in products:
+        for elem, cnt in mol.element_counts().items():
+            p_elems[elem] = p_elems.get(elem, 0) + cnt
+    all_elems = set(r_elems) | set(p_elems)
+    for elem in sorted(all_elems):
+        r_cnt = r_elems.get(elem, 0)
+        p_cnt = p_elems.get(elem, 0)
+        r_var = z3.IntVal(r_cnt)
+        p_var = z3.IntVal(p_cnt)
+        solver.add(r_var != p_var)
+        if solver.check() == z3.sat:
+            violations.append(
+                f"Atom conservation: {elem} count differs "
+                f"(reactants={r_cnt}, products={p_cnt})"
+            )
+        solver.reset()
+
     for mol in products:
         for i, atom in enumerate(mol.atoms):
             bonds_var = z3.Int(f"{mol.name}_{atom.element}_{i}_bonds")
             max_val   = z3.IntVal(atom.effective_valency)
             solver.add(bonds_var == z3.IntVal(atom.total_bonds))
-            solver.add(bonds_var > max_val)          # ask if valency is exceeded
+            solver.add(bonds_var > max_val)
             if solver.check() == z3.sat:
                 violations.append(
                     f"{mol.name}: {atom.element}[{i}] has {atom.total_bonds} bonds "
@@ -251,20 +278,7 @@ def check_reaction(
     tolerance: float = 0.02,
     prefer_z3: bool = True,
 ) -> ConstraintResult:
-    """
-    Verify that a proposed reaction satisfies all chemical axioms.
-
-    Parameters
-    ----------
-    reactants   : molecules before the reaction
-    products    : molecules after the reaction (may be partial / intermediate)
-    tolerance   : mass tolerance in atomic mass units (default 0.02 u)
-    prefer_z3   : use Z3 when available; fall back to pure-Python otherwise
-
-    Returns
-    -------
-    ConstraintResult with .sat, .violations, and .reason
-    """
+    """Check mass, charge, atom conservation, and valency for a reaction."""
     if prefer_z3 and Z3_AVAILABLE:
         return _check_z3(reactants, products, tolerance)
     return _check_pure_python(reactants, products, tolerance)
@@ -274,10 +288,7 @@ def check_intermediate(
     molecule: MolecularState,
     tolerance: float = 0.02,
 ) -> ConstraintResult:
-    """
-    Check a single intermediate molecule's internal consistency
-    (valency only — mass conservation requires reactant context).
-    """
+    """Valency-only check for a single molecule (no reaction context needed)."""
     violations: List[str] = []
     for i, atom in enumerate(molecule.atoms):
         if atom.total_bonds > atom.effective_valency:

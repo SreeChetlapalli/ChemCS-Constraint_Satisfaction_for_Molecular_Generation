@@ -1,4 +1,4 @@
-"""Constraint checks (Z3-backed when available)."""
+"""Constraint checks (uses Z3 when installed, pure-Python otherwise)."""
 
 from .chemical_axioms import (
     Atom,
@@ -9,6 +9,7 @@ from .chemical_axioms import (
     Z3_AVAILABLE,
     ATOMIC_MASS,
     MAX_VALENCY,
+    CHARGE_VALENCY_DELTA,
 )
 
 __all__ = [
@@ -20,4 +21,5 @@ __all__ = [
     "Z3_AVAILABLE",
     "ATOMIC_MASS",
     "MAX_VALENCY",
+    "CHARGE_VALENCY_DELTA",
 ]

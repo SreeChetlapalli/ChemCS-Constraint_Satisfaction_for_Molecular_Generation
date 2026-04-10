@@ -1,9 +1,4 @@
-"""
-Integration tests for the supervisor loop.
-
-Covers the full supervised generation flow (including correction and
-backtracking) and basic checks on `GenerationResult`.
-"""
+"""Tests for the supervisor loop (correction, backtracking, metrics)."""
 
 import sys
 import os
@@ -17,7 +12,7 @@ from chemistry_constraint_satisfaction.constraints.chemical_axioms import (
 from chemistry_constraint_satisfaction.diffusion.model import MolecularDiffusionModel
 from chemistry_constraint_satisfaction.diffusion.supervisor import (
     Supervisor, GenerationResult, StepRecord,
-    _fix_valency, _fix_mass,
+    _fix_valency, _fix_mass, _fix_charge,
 )
 
 
@@ -89,6 +84,22 @@ class TestCorrectionHelpers:
         fixed  = _fix_mass(mol, target, tolerance=0.02)
         assert fixed.total_mass() == pytest.approx(mol.total_mass())
 
+    def test_fix_charge_adds_positive(self):
+        mol = MolecularState("test", [Atom("H", bonds=1), Atom("C", bonds=4)])
+        fixed = _fix_charge(mol, target_charge=+1)
+        assert fixed.total_charge() == +1
+
+    def test_fix_charge_adds_negative(self):
+        mol = MolecularState("test", [Atom("C", bonds=4), Atom("O", bonds=2)])
+        fixed = _fix_charge(mol, target_charge=-1)
+        assert fixed.total_charge() == -1
+
+    def test_fix_charge_no_change_when_correct(self):
+        mol = MolecularState("test", [Atom("O", bonds=1, formal_charge=-1)])
+        fixed = _fix_charge(mol, target_charge=-1)
+        assert fixed.total_charge() == -1
+        assert fixed.atoms[0].formal_charge == -1
+
 
 # ===========================================================================
 # Tests: GenerationResult
@@ -135,6 +146,18 @@ class TestGenerationResult:
     def test_summary_shows_backtracks(self):
         r = self._make_result(backtracks=3)
         assert "3" in r.summary()
+
+    def test_metrics_dict(self):
+        r = self._make_result(sat=True, backtracks=2, corrections=1)
+        m = r.metrics
+        assert "valid" in m
+        assert "backtracks" in m
+        assert m["valid"] == 1.0
+        assert m["backtracks"] == 2
+
+    def test_metrics_wall_time(self):
+        r = self._make_result()
+        assert r.metrics["wall_time_s"] > 0
 
 
 # ===========================================================================

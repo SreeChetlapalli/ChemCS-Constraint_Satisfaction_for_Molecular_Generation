@@ -1,4 +1,4 @@
-"""Diffusion model and the constraint-checked supervisor loop."""
+"""Diffusion model + supervisor."""
 
 from .model import (
     MolecularDiffusionModel,
@@ -23,3 +23,24 @@ __all__ = [
     "GenerationResult",
     "StepRecord",
 ]
+
+def _lazy_training():
+    """Import training stuff on demand (avoids torch import at load time)."""
+    from .training import (
+        TorchMolecularDenoiser,
+        train,
+        TrainConfig,
+        TrainResult,
+        export_to_numpy,
+        CurriculumConfig,
+        LossWeights,
+    )
+    return {
+        "TorchMolecularDenoiser": TorchMolecularDenoiser,
+        "train": train,
+        "TrainConfig": TrainConfig,
+        "TrainResult": TrainResult,
+        "export_to_numpy": export_to_numpy,
+        "CurriculumConfig": CurriculumConfig,
+        "LossWeights": LossWeights,
+    }

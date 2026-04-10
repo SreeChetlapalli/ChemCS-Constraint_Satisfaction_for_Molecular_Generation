@@ -28,7 +28,7 @@ from chemistry_constraint_satisfaction.diffusion.model import (
 )
 from chemistry_constraint_satisfaction.diffusion.supervisor import (
     Supervisor, GenerationResult, StepRecord,
-    _fix_valency, _fix_mass,
+    _fix_valency, _fix_mass, _fix_charge,
 )
 
 try:
