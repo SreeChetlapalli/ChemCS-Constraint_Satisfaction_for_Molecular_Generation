@@ -8,7 +8,7 @@
 \usepackage{float}
 \usepackage[font=small,labelfont=bf]{caption}
 
-\title{ChemCS: Integrating Constraint Satisfaction and Diffusion\\Models for Chemically Valid Molecular Generation}
+\title{ChemCS: Integrating Constraint Satisfaction and Diffusion\\Models for Locally Valid Molecular Generation}
 \author{Sreepranav Chetlapalli}
 \date{}
 
@@ -27,7 +27,7 @@ Most existing approaches address this by filtering invalid outputs
 after generation is complete, which wastes computation and provides no
 mechanism for mid-trajectory correction.
 
-This paper presents ChemCS, a system that integrates a
+This paper presents ChemCS, a proof-of-concept system that integrates a
 constraint-satisfaction supervisor directly into the reverse-diffusion
 loop of a graph neural network (GNN) molecular generator. At every
 denoising step the supervisor decodes the current molecular state,
@@ -44,10 +44,13 @@ penalties for valency and element conservation to the standard denoising
 loss, with a curriculum schedule that ramps these penalties gradually to
 avoid destabilizing early training.
 
-On a benchmark of three representative reactions (SN2, combustion,
-acid-base) with 50 random seeds each, supervised generation achieves
-100\% valency validity compared with roughly 15\% for unsupervised
-generation with the same untrained network.
+In a small-scale exploratory benchmark of three reactions (SN2,
+combustion, acid-base) with 50 random seeds each, the supervisor
+enforces 100\% valency validity (every atom respects its bond-count
+limit) compared with 12--22\% for unsupervised generation with the same
+untrained network. Global conservation constraints (mass, charge, atom
+counts) remain unsatisfied at this scale, as they require a trained model
+that can predict chemically meaningful element types.
 \end{abstract}
 
 % ===================================================================
@@ -83,8 +86,11 @@ guide the generative process. If an error is detected at step 40 of a
 and discard it.
 
 ChemCS addresses this gap by wrapping the diffusion model in a
-supervisor loop that enforces chemical axioms at every reverse step. The
-key contributions of this work are:
+supervisor loop that enforces chemical axioms at every reverse step.
+This work is a proof-of-concept: the experiments use a small GNN and a
+limited set of reactions, and the results demonstrate the viability of
+the approach rather than state-of-the-art molecular generation. The key
+contributions are:
 
 \begin{enumerate}[nosep]
   \item A constraint-satisfaction module that encodes four fundamental
@@ -99,9 +105,25 @@ key contributions of this work are:
         standard denoising loss with differentiable penalties for valency
         violations and element-count mismatches, introduced through a
         curriculum schedule.
-  \item A comprehensive test suite and benchmark framework for
-        reproducible evaluation.
+  \item A test suite and benchmark framework for reproducible
+        evaluation.
 \end{enumerate}
+
+\subsection*{Related Work}
+
+Several recent systems apply diffusion models to molecular graphs.
+Hoogeboom et al.~\cite{hoogeboom2022equivariant} introduced an E(3)
+equivariant diffusion model that generates molecules in 3D coordinate
+space, enforcing rotational symmetry but not chemical bonding rules.
+Vignac et al.~\cite{vignac2023digress} proposed DiGress, a discrete
+diffusion model that operates directly on categorical node and edge
+attributes and scales to datasets with over one million molecules.
+Both approaches generate molecules without mid-trajectory constraint
+enforcement and rely on post-hoc validity filtering. ChemCS is
+complementary to these methods: it contributes the supervisor
+architecture (constraint checking, correction, backtracking) rather
+than the generative model itself, and could in principle wrap any
+graph-based diffusion backbone.
 
 % ===================================================================
 % 2  BACKGROUND
@@ -155,13 +177,15 @@ number of bonds must not exceed the allowed valency for that element and
 charge'' becomes an integer-arithmetic constraint that Z3 can check or
 refute in microseconds.
 
-The advantage of using an SMT solver rather than simple procedural
-checks is extensibility: adding a new chemical rule amounts to adding a
-new constraint to the solver, without modifying control flow. Although
-the current set of rules is small enough that an SMT solver is not
-strictly necessary, it establishes a framework that can accommodate more
-complex constraints (such as ring-size limits or aromaticity rules) in
-the future.
+For the four rules currently implemented, a simple procedural checker
+would suffice. The choice of Z3 is a practical one: it provides a
+uniform API for expressing constraints of varying complexity, and it
+reduces the risk of bugs in hand-written checking logic. It also leaves
+the door open for more complex constraints (such as ring-size limits or
+aromaticity rules) that would benefit from a real solver. The current
+implementation does not exercise this extensibility, so Z3 should be
+understood as a convenient tool choice rather than a strict architectural
+requirement.
 
 % ===================================================================
 % 3  PROBLEM FORMULATION
@@ -259,11 +283,26 @@ I   & 126.904 & 1 & None \\
 
 \subsection{The Generation Task}
 
-Given a set of reactant molecules, the task is to generate a set of
-product molecules such that all four axioms in Table~\ref{tab:axioms}
-are satisfied. The diffusion model proposes candidates through iterative
-denoising, and the supervisor ensures the result is chemically
-consistent.
+ChemCS operates at the level of chemical reactions, not individual
+molecules. Given a set of reactant molecules, the task is to generate a
+set of product molecules such that all four axioms in
+Table~\ref{tab:axioms} are satisfied. The diffusion model operates on a
+single concatenated molecular graph (all reactant atoms merged into one
+graph), and the supervisor checks constraints at two levels:
+
+\begin{itemize}[nosep]
+  \item Per-atom (molecule-level): Valency is checked at every denoising
+        step, since it depends only on the local bonding environment of
+        each atom.
+  \item Per-reaction: Mass, charge, and atom-count conservation are
+        checked at the final step, since they require comparing the
+        generated products against the original reactants.
+\end{itemize}
+
+This two-level design means the supervisor can catch local structural
+errors (overvalenced atoms) early in the trajectory, while global
+conservation errors are only detectable once the full product is
+available.
 
 % ===================================================================
 % 4  METHODOLOGY
@@ -323,6 +362,16 @@ adjacency matrix), and $W_{\text{self}}^{(\ell)}$,
 $W_{\text{neigh}}^{(\ell)}$ are learnable weight matrices. The
 neighbour features are mean-aggregated (divided by the degree), which
 normalizes the contribution regardless of how many bonds an atom has.
+
+Note that in Equation~\ref{eq:gnn} the adjacency matrix $A$ determines
+only the neighbourhood structure (which atoms are bonded), not the
+message weights. Bond orders are not used to scale the neighbour
+contributions. This is a simplification: in principle, a double bond
+should carry more information than a single bond. More expressive
+message-passing schemes that incorporate edge features (such as those
+used in DiGress~\cite{vignac2023digress}) could improve the quality of
+the denoiser, but the current architecture is sufficient for the
+proof-of-concept evaluation.
 
 After two graph convolutional layers, the network produces outputs
 through two heads:
@@ -590,7 +639,9 @@ rate $10^{-3}$).
 After training, the learned weights are exported to the NumPy model via
 \texttt{export\_to\_numpy()}, which copies all weight matrices and bias
 vectors. This allows the supervisor loop to use trained weights without
-requiring PyTorch at inference time.
+requiring PyTorch at inference time. The NumPy inference path was chosen
+to eliminate the PyTorch dependency for deployment; in a production
+setting, \texttt{torch.no\_grad()} on CPU would be equally viable.
 
 % ===================================================================
 % 5  EXPERIMENTAL SETUP
@@ -733,19 +784,30 @@ Average     & 100\% & 15\% & 0\% & 0\% \\
 \end{tabular}
 \end{table}
 
-The key observations are:
+It is important to be precise about what these results do and do not
+show.
 
-\begin{enumerate}[nosep]
-  \item The supervisor achieves 100\% valency validity across all three
-        reactions and all 50 seeds for each. Without the supervisor, only
-        about 15\% of runs produce valency-valid outputs.
-  \item Full conservation remains at 0\% for both conditions. This is
-        expected: the GNN has random weights and predicts essentially
-        random element labels, so mass, charge, and atom-count
-        conservation cannot be satisfied even with the supervisor's
-        correction heuristics. Full conservation requires a trained model
-        that produces chemically meaningful outputs.
-\end{enumerate}
+The 100\% valency validity result means that the supervisor successfully
+enforces a local, per-atom structural constraint: no atom in any
+generated product has more bonds than its element allows. This is a
+necessary condition for chemical validity, but not a sufficient one. The
+supervisor achieves this by inspecting and repairing each atom
+independently, which it can do regardless of whether the GNN produces
+meaningful outputs. In effect, the experiment demonstrates that the
+supervisor can enforce local bonding rules on arbitrary molecular
+graphs, even those generated by random noise.
+
+The 0\% full conservation result is equally important. Mass, charge, and
+atom-count conservation are global, reaction-level constraints that
+require the generated product to contain the correct elements in the
+correct quantities. With random GNN weights, the model assigns element
+types essentially at random (e.g., predicting nitrogen where carbon
+should be), so no amount of local repair can fix the element composition.
+Full conservation requires a trained model that produces chemically
+meaningful element predictions. The current benchmark does not evaluate
+the trained model on the generation task (see Section~\ref{sec:future}),
+so the question of whether the supervisor improves full conservation
+with a competent model remains open.
 
 \subsection{Training Dynamics}
 
@@ -807,19 +869,32 @@ penalties to take effect.
 \section{Discussion}
 
 The central finding is that constraint enforcement during generation
-substantially improves local chemical validity, even when the underlying
-neural network has not been trained. The supervisor achieves 100\%
-valency validity with random weights, demonstrating that the benefit
-comes from the logical checking and repair mechanism rather than from
-the model itself.
+can enforce local structural validity (specifically, valency limits)
+even when the underlying neural network has not been trained. This is a
+useful but limited result: the supervisor is effectively performing a
+deterministic repair on each atom's bond count, which it can do
+regardless of the quality of the model's predictions. The 100\% valency
+result should therefore be read as evidence that the
+commit/correct/backtrack loop works correctly as an engineering system,
+not as evidence that the generated molecules are chemically meaningful.
 
-This result supports the broader idea that logic and learning are
-complementary: the neural network provides the generative capacity
-(proposing plausible structures from noise), while the constraint system
-provides the domain knowledge (rejecting or repairing implausible
-configurations). Neither component alone is sufficient. A constraint
-checker without a generator cannot propose novel molecules, and a
-generator without constraints produces mostly invalid outputs.
+The 0\% full conservation result underscores this point. Generating
+chemically valid reaction products requires the model to predict the
+correct element types, which in turn requires training on real molecular
+data. The supervisor can repair local bonding errors, but it cannot
+invent the correct atom identities. This gap between local and global
+validity is the central open question for future work.
+
+Despite these limitations, the results support a broader design
+principle: logic and learning are complementary. The neural network
+provides generative capacity (proposing structures from noise), while
+the constraint system provides domain knowledge (rejecting or repairing
+implausible configurations). Neither component alone is sufficient. A
+constraint checker without a generator cannot propose novel molecules,
+and a generator without constraints produces mostly invalid outputs. The
+hypothesis is that with a trained model producing roughly correct
+element assignments, the supervisor's repair mechanisms would address
+the remaining edge cases, but this hypothesis has not yet been tested.
 
 An important nuance is the interaction between inference-time correction
 and training. When the supervisor fixes the model's mistakes at
@@ -843,48 +918,80 @@ molecules tested here the overhead is negligible in absolute terms.
 \section{Limitations and Future Work}
 \label{sec:future}
 
-\textbf{Training data scale.} The training experiments use only three
+\emph{Missing trained-model evaluation.} The most significant gap in the
+current evaluation is that the benchmark (Table~\ref{tab:results})
+uses only an untrained GNN with random weights. The training pipeline
+(Section~\ref{sec:training}) demonstrates that the loss converges, but
+the trained model is never evaluated on the generation benchmark. A
+critical next step is to re-run the supervised vs.\ unsupervised
+comparison with trained weights to determine whether full conservation
+(mass, charge, atoms) improves from 0\% to a meaningful level.
+
+\emph{Training data scale.} The training experiments use only three
 molecules (water, methane, ethanol). A serious evaluation would require
 training on a standard dataset such as QM9~\cite{ramakrishnan2014qm9}
-or ZINC~\cite{irwin2012zinc}, parsed from SMILES strings via RDKit.
+(134k molecules) or ZINC~\cite{irwin2012zinc} (millions of compounds),
+parsed from SMILES strings via RDKit.
 
-\textbf{Correction sophistication.} The current repair heuristics
+\emph{Model capacity.} The GNN denoiser is intentionally lightweight:
+two layers, approximately 20,000 parameters, mean-aggregation without
+edge features. This is sufficient for the proof-of-concept evaluation
+but unlikely to generalize to larger molecules or more complex reaction
+types. Scaling to a deeper model with edge-aware message passing (as
+in DiGress~\cite{vignac2023digress}) would be necessary for a
+meaningful comparison with the state of the art.
+
+\emph{Correction sophistication.} The current repair heuristics
 (Table~\ref{tab:corrections}) are greedy and local: they fix one atom
 at a time without considering the global molecular structure. A more
 principled approach would be to ask the Z3 solver to find a minimal set
 of edits that restores validity, treating the correction itself as a
 constraint-satisfaction problem.
 
-\textbf{Benchmark scale.} The current benchmark uses 50 seeds across 3
-reactions. Scaling to approximately 1,000 reactions across diverse
-reaction types would provide stronger statistical evidence.
+\emph{Benchmark scale.} The current benchmark uses 50 seeds across 3
+reactions, which is sufficient for a proof-of-concept but too small to
+draw strong statistical conclusions. Scaling to hundreds of diverse
+reaction types would provide more robust evidence.
 
-\textbf{Comparison to existing methods.} This work does not compare
+\emph{Comparison to existing methods.} This work does not compare
 against established molecular generation baselines (e.g., DiGress,
 GDSS, or MolGAN). Such comparisons would be necessary to position
 ChemCS relative to the state of the art.
+
+\emph{Molecular complexity.} The current system handles molecules up to
+approximately 15 atoms. The bond head's pairwise computation is $O(n^2)$
+in the number of atoms, which becomes expensive for larger molecules.
+There are no rules for ring structures, stereochemistry, or aromaticity.
 
 % ===================================================================
 % 9  CONCLUSION
 % ===================================================================
 \section{Conclusion}
 
-This paper presented ChemCS, a system that integrates constraint
-satisfaction directly into the reverse-diffusion loop of a graph neural
-network molecular generator. By checking chemical axioms (valency, mass
-conservation, charge balance, and atom counts) at every denoising step,
-the supervisor achieves 100\% valency validity on a benchmark of three
-representative reactions, compared with approximately 15\% for the same
-model without supervision. A companion training pipeline adds
-differentiable constraint penalties through a curriculum schedule,
-providing gradient signal that complements the inference-time checks.
+This paper presented ChemCS, a proof-of-concept system that integrates
+constraint satisfaction directly into the reverse-diffusion loop of a
+graph neural network molecular generator. By checking valency limits at
+every denoising step, the supervisor enforces 100\% local bonding
+validity on a small benchmark of three reactions, compared with
+12--22\% for the same untrained model without supervision. Global
+conservation constraints (mass, charge, atom counts) remain unsatisfied
+with random weights, highlighting that the supervisor addresses
+structural validity but not chemical correctness, which requires a
+trained model.
+
+A companion training pipeline adds differentiable constraint penalties
+through a curriculum schedule, providing gradient signal that
+complements the inference-time checks. The training loss converges on a
+small dataset, but the trained model has not yet been evaluated on the
+generation benchmark, and this is the most important next step.
 
 The architecture demonstrates that combining symbolic reasoning (via Z3)
-with neural generation (via a GNN denoiser) can enforce domain
+with neural generation (via a GNN denoiser) can enforce local domain
 constraints without sacrificing the flexibility of the generative model.
-The code, figures, and tests are available in the project repository.
-The NumPy inference path runs on CPU; PyTorch is required only for
-training.
+Whether this approach scales to larger models, larger molecules, and
+more complex constraint sets is an open question that this work is
+designed to motivate. The code, figures, and tests are available in the
+project repository.
 
 % ===================================================================
 % REFERENCES
