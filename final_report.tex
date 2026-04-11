@@ -252,31 +252,22 @@ valencies and how formal charge can alter them.
 \begin{table}[H]
 \centering
 \caption{Supported elements with atomic mass, maximum valency, and
-         charge-adjusted valency. The ``Charge adjustment'' column shows
-         how a non-zero formal charge on the atom changes the number of
-         bonds it is allowed to form. For example, nitrogen normally
-         allows at most 3 bonds, but when it carries a $+1$ formal
-         charge (as in the ammonium ion NH$_4^+$) the limit increases
-         to~4. A dash indicates that no charge adjustment is defined.}
+         charge-adjusted valency where applicable.}
 \label{tab:elements}
-\begin{tabular}{@{}lrrp{6.8cm}@{}}
+\begin{tabular}{@{}lrrl@{}}
 \toprule
 Element & Mass (u) & Max valency & Charge adjustment \\
 \midrule
-H   &   1.008 & 1 & None \\
-C   &  12.011 & 4 & None \\
-N   &  14.007 & 3 & With charge $+1$, max valency becomes 4
-                     (e.g.\ NH$_4^+$). With charge $-1$, max valency
-                     becomes 2. \\
-O   &  15.999 & 2 & With charge $-1$, max valency becomes 1
-                     (e.g.\ hydroxide OH$^-$). \\
-F   &  18.998 & 1 & None \\
-P   &  30.974 & 5 & With charge $+1$, max valency becomes 6. \\
-S   &  32.060 & 6 & With charge $+1$, max valency becomes 7.
-                     With charge $+2$, max valency becomes 8. \\
-Cl  &  35.450 & 1 & None \\
-Br  &  79.904 & 1 & None \\
-I   & 126.904 & 1 & None \\
+H  &   1.008 & 1 & --- \\
+C  &  12.011 & 4 & --- \\
+N  &  14.007 & 3 & $+1 \to 4$;\ $-1 \to 2$ \\
+O  &  15.999 & 2 & $-1 \to 1$ \\
+F  &  18.998 & 1 & --- \\
+P  &  30.974 & 5 & $+1 \to 6$ \\
+S  &  32.060 & 6 & $+1 \to 7$;\ $+2 \to 8$ \\
+Cl &  35.450 & 1 & --- \\
+Br &  79.904 & 1 & --- \\
+I  & 126.904 & 1 & --- \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -394,30 +385,16 @@ under a second for molecules with up to roughly 15 atoms.
 
 \subsection{Noise Schedule}
 
-The forward diffusion process adds noise according to a variance
-schedule. ChemCS supports two schedules:
-
-The linear schedule sets the noise level $\beta_t$ to increase linearly
-from $\beta_{\min} = 10^{-4}$ to $\beta_{\max} = 0.1$:
-\begin{equation}
-\beta_t = \beta_{\min} + \frac{t}{T}\,(\beta_{\max} - \beta_{\min})
-\end{equation}
-
-The cosine schedule~\cite{nichol2021improved} sets the cumulative
-signal-retention factor to follow a cosine curve:
-\begin{equation}
-\bar\alpha_t = \frac{f(t)}{f(0)}, \quad
-f(u) = \cos^2\!\left(\frac{u/T + s}{1 + s} \cdot \frac{\pi}{2}\right)
-\end{equation}
-with offset $s = 0.008$. The cosine schedule provides a gentler noise
-ramp in the early and late timesteps, which has been shown to improve
-sample quality.
-
-For atom features, noise is added via
-$x_t = \sqrt{\bar\alpha_t}\, x_0 + \sqrt{1 - \bar\alpha_t}\, \epsilon$
-where $\epsilon \sim \mathcal{N}(0, I)$. For bond orders, each entry in
-the adjacency matrix is independently re-sampled from $\{0,1,2,3\}$
-with probability $(1 - \bar\alpha_t)$, and symmetry is enforced by
+ChemCS supports linear and cosine~\cite{nichol2021improved} noise
+schedules. The linear schedule increases $\beta_t$ from
+$10^{-4}$ to $0.1$; the cosine schedule follows
+$\bar\alpha_t = f(t)/f(0)$ with
+$f(u) = \cos^2\!\bigl(\frac{u/T + s}{1+s}\cdot\frac{\pi}{2}\bigr)$
+and $s = 0.008$, giving a gentler ramp that improves sample quality.
+For atom features, noise is added via the standard DDPM rule
+$x_t = \sqrt{\bar\alpha_t}\, x_0 + \sqrt{1-\bar\alpha_t}\, \epsilon$.
+For bond orders, each adjacency entry is re-sampled from $\{0,1,2,3\}$
+with probability $(1-\bar\alpha_t)$, and symmetry is enforced by
 mirroring the upper triangle.
 
 \subsection{Constraint Checking with Z3}
@@ -503,9 +480,8 @@ ensure the loop terminates even in adversarial cases.
 \subsection{Correction Strategies}
 \label{sec:corrections}
 
-When a denoising step produces an invalid molecular state, the
-supervisor applies up to three targeted repair heuristics before
-resorting to backtracking:
+When a denoising step produces an invalid state, the supervisor applies
+up to three targeted repairs before backtracking:
 
 \begin{table}[H]
 \centering
@@ -516,25 +492,19 @@ resorting to backtracking:
 Strategy & Targets & Mechanism \\
 \midrule
 \textsc{FixValency} & Overvalenced atoms &
-  For each atom whose total bonds exceed its effective valency, reduce
-  the explicit bond count (and then implicit hydrogen count if necessary)
-  until the constraint is satisfied. \\[4pt]
+  Reduce explicit bonds (then implicit H) until the valency limit is met. \\[4pt]
 \textsc{FixCharge} & Charge imbalance &
-  Compute the charge deficit between target and current. Distribute
-  $\pm 1$ charge adjustments across atoms, prioritizing lighter atoms
-  first (lightest-first heuristic). \\[4pt]
+  Distribute $\pm 1$ charge adjustments across atoms (lightest first). \\[4pt]
 \textsc{FixMass} & Mass imbalance &
-  Compute the mass deficit. Add or remove implicit hydrogens
-  (mass $\approx 1.008$\,u each) across atoms to bring the total mass
-  within tolerance, respecting each atom's remaining bonding capacity. \\
+  Add/remove implicit hydrogens ($\approx 1.008$\,u each) to close the
+  mass gap, respecting remaining bonding capacity. \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-These heuristics are intentionally simple: they provide a best-effort
-repair that is sufficient for the small molecules tested here. More
-sophisticated strategies, such as asking Z3 to propose minimal edits,
-are discussed in Section~\ref{sec:future}.
+These heuristics are intentionally simple and sufficient for the small
+molecules tested here; more sophisticated strategies are discussed in
+Section~\ref{sec:future}.
 
 \subsection{Constraint-Aware Training}
 \label{sec:training}
@@ -622,26 +592,13 @@ sufficiently stable.
 
 \subsubsection{Training Pipeline}
 
-The PyTorch training pipeline mirrors the NumPy model architecture
-(two-layer GNN with identical layer types) but adds a time embedding:
-the fractional timestep $t/T \in [0, 1]$ is projected through a
-two-layer MLP with SiLU activation and added to the atom features after
-the input projection. This gives the model information about where it
-is in the denoising trajectory.
-
-Training proceeds for a configurable number of epochs (default 100).
-At each epoch, for each training molecule, a random timestep is sampled,
-noise is added to create the corrupted input, and the model predicts the
-clean state. The loss (Equation~\ref{eq:loss}) is backpropagated with
-gradient clipping (max norm 1.0) and Adam optimization (learning
-rate $10^{-3}$).
-
-After training, the learned weights are exported to the NumPy model via
-\texttt{export\_to\_numpy()}, which copies all weight matrices and bias
-vectors. This allows the supervisor loop to use trained weights without
-requiring PyTorch at inference time. The NumPy inference path was chosen
-to eliminate the PyTorch dependency for deployment; in a production
-setting, \texttt{torch.no\_grad()} on CPU would be equally viable.
+The PyTorch training pipeline mirrors the NumPy model but adds a
+time embedding: the fractional timestep $t/T$ is projected through a
+two-layer MLP with SiLU activation and added to the atom features.
+Training runs for a configurable number of epochs (default 100) with
+Adam ($\text{lr} = 10^{-3}$) and gradient clipping (max norm 1.0).
+After training, weights are exported to the NumPy model via
+\texttt{export\_to\_numpy()} for PyTorch-free inference.
 
 % ===================================================================
 % 5  EXPERIMENTAL SETUP
@@ -719,30 +676,14 @@ one minute.
 
 \subsection{Constraint Checker Validation}
 
-The constraint checking module is validated through a comprehensive test
-suite. Unit tests cover textbook chemical scenarios including:
-
-\begin{itemize}[nosep]
-  \item Valid reactions: SN2 (CH$_3$Br + OH$^-$ $\to$ CH$_3$OH + Br$^-$)
-        and methane combustion (CH$_4$ + 2\,O$_2$ $\to$ CO$_2$ +
-        2\,H$_2$O) both pass all four axioms.
-  \item Valency violations: Carbon with 5 bonds, hydrogen with 2 bonds,
-        and bromine with 2 bonds are all correctly flagged.
-  \item Charge-adjusted valency: NH$_4^+$ (nitrogen with 4 bonds and
-        $+1$ charge) is correctly accepted, since the $+1$ charge raises
-        nitrogen's valency limit from 3 to 4.
-  \item Conservation violations: Missing products (dropped Br$^-$),
-        extra hydrogen atoms, and neutral Br replacing Br$^-$ are all
-        detected.
-  \item Edge cases: Empty product lists, single-atom molecules, and
-        high-valency elements (sulfur with 6 bonds, phosphorus with
-        5 bonds) are handled correctly.
-\end{itemize}
-
-All tests pass, covering the constraint checker, encoding/decoding,
-noise schedule, reverse steps, correction heuristics, supervisor
-integration, training loop, curriculum schedule, model export, and
-dataset utilities.
+The constraint checker is validated through a comprehensive test suite
+covering valid reactions (SN2, combustion), valency violations (e.g.,
+carbon with 5 bonds), charge-adjusted valency (e.g., NH$_4^+$),
+conservation violations (missing products, extra atoms), and edge cases
+(empty products, high-valency elements). All tests pass, additionally
+covering encoding/decoding, noise schedules, reverse steps, correction
+heuristics, supervisor integration, the training loop, curriculum
+schedule, and model export.
 
 \subsection{Supervised vs. Unsupervised Generation}
 
@@ -811,57 +752,33 @@ with a competent model remains open.
 
 \subsection{Training Dynamics}
 
-Figure~\ref{fig:training} shows the training loss over 200 epochs on
-the three-molecule dataset.
+Figure~\ref{fig:training} shows the training loss over 200 epochs.
+During the warmup phase (epochs 1--50), only the denoising MSE and bond
+cross-entropy are active; the MSE converges quickly. When the valency
+penalty is activated at epoch 50 it initially spikes, then decreases as
+the model adapts. By epoch 100 all components stabilize, with bond
+cross-entropy dominating due to the $O(n^2)$ pairwise prediction.
 
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.85\textwidth]{figures/fig1_training_loss.png}
   \caption{Training loss components over 200 epochs on water, methane,
-           and ethanol. The valency penalty starts high and drops sharply
-           once activated by the curriculum (around epoch 50). Bond
-           cross-entropy dominates the total loss throughout training.
-           The denoising MSE converges quickly in the first 20 epochs.}
+           and ethanol.}
   \label{fig:training}
 \end{figure}
 
-The loss curve reveals several training phases:
-
-\begin{itemize}[nosep]
-  \item Epochs 1--50 (warmup): Only the denoising MSE and bond
-        cross-entropy are active. The model learns basic feature
-        reconstruction. The denoising MSE drops rapidly and stabilizes
-        near zero.
-  \item Epochs 50--100 (penalty ramp): The valency penalty is activated
-        and initially spikes because the model has not yet learned to
-        respect bond limits. It then decreases as the model adapts.
-  \item Epochs 100--200 (steady state): All loss components stabilize.
-        The bond cross-entropy remains the largest component, reflecting
-        the difficulty of predicting the correct bond structure among
-        $O(n^2)$ atom pairs.
-\end{itemize}
-
-\subsection{Curriculum Schedule Ablation}
-
-Figure~\ref{fig:curriculum} compares three curriculum configurations to
-illustrate the effect of the warmup fraction.
+Figure~\ref{fig:curriculum} compares three curriculum warmup fractions.
+The 25\% warmup was selected as the default: no warmup caused loss
+spikes (constraint penalties overwhelmed denoising gradients), while
+50\% warmup left too few epochs for the penalties to take effect.
 
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.7\textwidth]{figures/fig3_curriculum.png}
-  \caption{Curriculum penalty weight scale over 100 epochs for three
-           warmup strategies. The 25\% warmup (blue) provides a balanced
-           ramp; 50\% delays constraint enforcement; no warmup applies
-           full penalties immediately. In practice, 25\% was found to
-           give the most stable training convergence.}
+  \caption{Curriculum penalty scale for three warmup strategies (0\%,
+           25\%, 50\%) over 100 epochs.}
   \label{fig:curriculum}
 \end{figure}
-
-The 25\% warmup was selected as the default after observing that using
-no warmup caused loss spikes in early training (the constraint penalties
-overwhelmed the denoising gradients before the model could learn basic
-feature reconstruction), while 50\% warmup left too few epochs for the
-penalties to take effect.
 
 % ===================================================================
 % 7  DISCUSSION
@@ -869,48 +786,25 @@ penalties to take effect.
 \section{Discussion}
 
 The central finding is that constraint enforcement during generation
-can enforce local structural validity (specifically, valency limits)
-even when the underlying neural network has not been trained. This is a
-useful but limited result: the supervisor is effectively performing a
-deterministic repair on each atom's bond count, which it can do
-regardless of the quality of the model's predictions. The 100\% valency
-result should therefore be read as evidence that the
-commit/correct/backtrack loop works correctly as an engineering system,
-not as evidence that the generated molecules are chemically meaningful.
+enforces local structural validity even with an untrained network. The
+100\% valency result demonstrates that the commit/correct/backtrack
+loop works correctly as an engineering system; the 0\% full conservation
+result shows its limits, since global constraints require a trained
+model that predicts correct element types.
 
-The 0\% full conservation result underscores this point. Generating
-chemically valid reaction products requires the model to predict the
-correct element types, which in turn requires training on real molecular
-data. The supervisor can repair local bonding errors, but it cannot
-invent the correct atom identities. This gap between local and global
-validity is the central open question for future work.
+The results support a broader design principle: logic and learning are
+complementary. The neural network provides generative capacity, while
+the constraint system provides domain knowledge. Neither alone
+suffices---a constraint checker cannot propose novel molecules, and a
+generator without constraints produces mostly invalid outputs. We
+hypothesise that with trained weights the supervisor would address
+remaining edge cases, but this has not yet been tested.
 
-Despite these limitations, the results support a broader design
-principle: logic and learning are complementary. The neural network
-provides generative capacity (proposing structures from noise), while
-the constraint system provides domain knowledge (rejecting or repairing
-implausible configurations). Neither component alone is sufficient. A
-constraint checker without a generator cannot propose novel molecules,
-and a generator without constraints produces mostly invalid outputs. The
-hypothesis is that with a trained model producing roughly correct
-element assignments, the supervisor's repair mechanisms would address
-the remaining edge cases, but this hypothesis has not yet been tested.
-
-An important nuance is the interaction between inference-time correction
-and training. When the supervisor fixes the model's mistakes at
-inference time, the model does not receive any signal about those
-mistakes. This is why the constraint-aware training loss is important:
-it gives the model gradient signal about chemical validity during
-learning, so that over time the supervisor has fewer violations to
-correct. The curriculum schedule is essential here because the denoising
-and constraint objectives operate at different scales and the model
-needs to learn basic feature reconstruction before it can meaningfully
-respond to valency penalties.
-
-The runtime overhead of the supervisor is moderate and could be reduced
-with batched constraint checking or by running the Z3 solver only on
-suspicious atoms (those with high predicted bond counts). For the small
-molecules tested here the overhead is negligible in absolute terms.
+The constraint-aware training loss bridges inference-time and training:
+it gives the model gradient signal about chemical validity so that over
+time the supervisor has fewer violations to correct. The curriculum
+schedule is essential because the model must learn basic denoising
+before it can meaningfully respond to valency penalties.
 
 % ===================================================================
 % 8  LIMITATIONS AND FUTURE WORK
@@ -918,50 +812,27 @@ molecules tested here the overhead is negligible in absolute terms.
 \section{Limitations and Future Work}
 \label{sec:future}
 
-\emph{Missing trained-model evaluation.} The most significant gap in the
-current evaluation is that the benchmark (Table~\ref{tab:results})
-uses only an untrained GNN with random weights. The training pipeline
-(Section~\ref{sec:training}) demonstrates that the loss converges, but
-the trained model is never evaluated on the generation benchmark. A
-critical next step is to re-run the supervised vs.\ unsupervised
-comparison with trained weights to determine whether full conservation
-(mass, charge, atoms) improves from 0\% to a meaningful level.
+\emph{Trained-model evaluation.} The benchmark uses only an untrained
+GNN. Re-running supervised vs.\ unsupervised generation with trained
+weights is the most critical next step to determine whether full
+conservation improves from 0\%.
 
-\emph{Training data scale.} The training experiments use only three
-molecules (water, methane, ethanol). A serious evaluation would require
-training on a standard dataset such as QM9~\cite{ramakrishnan2014qm9}
-(134k molecules) or ZINC~\cite{irwin2012zinc} (millions of compounds),
-parsed from SMILES strings via RDKit.
+\emph{Data and model scale.} Training uses only three molecules; a
+serious evaluation would require a standard dataset such as
+QM9~\cite{ramakrishnan2014qm9} or ZINC~\cite{irwin2012zinc}. The
+two-layer, 20k-parameter GNN with mean-aggregation is sufficient for
+the proof of concept but unlikely to generalise. Scaling to edge-aware
+message passing (as in DiGress~\cite{vignac2023digress}) and comparing
+against established baselines (DiGress, GDSS, MolGAN) are necessary.
 
-\emph{Model capacity.} The GNN denoiser is intentionally lightweight:
-two layers, approximately 20,000 parameters, mean-aggregation without
-edge features. This is sufficient for the proof-of-concept evaluation
-but unlikely to generalize to larger molecules or more complex reaction
-types. Scaling to a deeper model with edge-aware message passing (as
-in DiGress~\cite{vignac2023digress}) would be necessary for a
-meaningful comparison with the state of the art.
+\emph{Correction sophistication.} The repair heuristics are greedy and
+local. A more principled approach would formulate correction itself as
+a constraint-satisfaction problem, asking Z3 for a minimal edit set.
 
-\emph{Correction sophistication.} The current repair heuristics
-(Table~\ref{tab:corrections}) are greedy and local: they fix one atom
-at a time without considering the global molecular structure. A more
-principled approach would be to ask the Z3 solver to find a minimal set
-of edits that restores validity, treating the correction itself as a
-constraint-satisfaction problem.
-
-\emph{Benchmark scale.} The current benchmark uses 50 seeds across 3
-reactions, which is sufficient for a proof-of-concept but too small to
-draw strong statistical conclusions. Scaling to hundreds of diverse
-reaction types would provide more robust evidence.
-
-\emph{Comparison to existing methods.} This work does not compare
-against established molecular generation baselines (e.g., DiGress,
-GDSS, or MolGAN). Such comparisons would be necessary to position
-ChemCS relative to the state of the art.
-
-\emph{Molecular complexity.} The current system handles molecules up to
-approximately 15 atoms. The bond head's pairwise computation is $O(n^2)$
-in the number of atoms, which becomes expensive for larger molecules.
-There are no rules for ring structures, stereochemistry, or aromaticity.
+\emph{Benchmark breadth and molecular complexity.} The 50-seed,
+3-reaction benchmark is too small for strong statistical conclusions,
+and the system handles only molecules up to $\sim$15 atoms with no
+rules for ring structures, stereochemistry, or aromaticity.
 
 % ===================================================================
 % 9  CONCLUSION
