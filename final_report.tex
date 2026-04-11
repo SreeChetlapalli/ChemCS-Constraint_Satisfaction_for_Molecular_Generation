@@ -64,8 +64,7 @@ design, where candidate molecules must satisfy pharmacological
 constraints, to materials science, where target properties such as band
 gap or thermal stability guide the search. In recent years, diffusion
 models, originally developed for image generation, have been adapted to
-molecular graphs with encouraging
-results~\cite{hoogeboom2022equivariant, vignac2023digress}.
+molecular graphs with encouraging results.
 
 A diffusion model generates a sample by starting from pure noise and
 iteratively refining it through a sequence of learned denoising steps.
@@ -112,10 +111,10 @@ contributions are:
 \subsection*{Related Work}
 
 Several recent systems apply diffusion models to molecular graphs.
-Hoogeboom et al.~\cite{hoogeboom2022equivariant} introduced an E(3)
+Hoogeboom et al.\ introduced an E(3)
 equivariant diffusion model that generates molecules in 3D coordinate
 space, enforcing rotational symmetry but not chemical bonding rules.
-Vignac et al.~\cite{vignac2023digress} proposed DiGress, a discrete
+Vignac et al.\ proposed DiGress, a discrete
 diffusion model that operates directly on categorical node and edge
 attributes and scales to datasets with over one million molecules.
 Both approaches generate molecules without mid-trajectory constraint
@@ -160,7 +159,7 @@ adjacency matrix of bond orders. The forward process adds continuous
 Gaussian noise to atom features and randomly corrupts bond orders. The
 reverse process uses a graph neural network to predict the clean state
 from the noisy one. ChemCS supports both linear and
-cosine~\cite{nichol2021improved} noise schedules.
+cosine noise schedules.
 
 \subsection{Satisfiability Modulo Theories (SMT) and Z3}
 
@@ -170,7 +169,7 @@ numbers, and arrays. An SMT solver takes a set of logical constraints
 and determines whether any variable assignment satisfies all of them
 simultaneously.
 
-Z3~\cite{demoura2008z3} is a high-performance SMT solver developed by
+Z3 is a high-performance SMT solver developed by
 Microsoft Research. In ChemCS, Z3 is used to encode chemical rules as
 constraints: for example, the statement ``for every atom $i$, the total
 number of bonds must not exceed the allowed valency for that element and
@@ -360,7 +359,7 @@ message weights. Bond orders are not used to scale the neighbour
 contributions. This is a simplification: in principle, a double bond
 should carry more information than a single bond. More expressive
 message-passing schemes that incorporate edge features (such as those
-used in DiGress~\cite{vignac2023digress}) could improve the quality of
+used in DiGress) could improve the quality of
 the denoiser, but the current architecture is sufficient for the
 proof-of-concept evaluation.
 
@@ -385,7 +384,7 @@ under a second for molecules with up to roughly 15 atoms.
 
 \subsection{Noise Schedule}
 
-ChemCS supports linear and cosine~\cite{nichol2021improved} noise
+ChemCS supports linear and cosine noise
 schedules. The linear schedule increases $\beta_t$ from
 $10^{-4}$ to $0.1$; the cosine schedule follows
 $\bar\alpha_t = f(t)/f(0)$ with
@@ -819,10 +818,10 @@ conservation improves from 0\%.
 
 \emph{Data and model scale.} Training uses only three molecules; a
 serious evaluation would require a standard dataset such as
-QM9~\cite{ramakrishnan2014qm9} or ZINC~\cite{irwin2012zinc}. The
+QM9 or ZINC. The
 two-layer, 20k-parameter GNN with mean-aggregation is sufficient for
 the proof of concept but unlikely to generalise. Scaling to edge-aware
-message passing (as in DiGress~\cite{vignac2023digress}) and comparing
+message passing (as in DiGress) and comparing
 against established baselines (DiGress, GDSS, MolGAN) are necessary.
 
 \emph{Correction sophistication.} The repair heuristics are greedy and
@@ -874,18 +873,21 @@ E.~Hoogeboom, V.~G.~Satorras, C.~Vignac, and M.~Welling,
 ``Equivariant diffusion for molecule generation in 3D,''
 in \textit{Proc.\ International Conference on Machine Learning (ICML)},
 vol.~162, pp.~8867--8887, 2022.
+\\\url{https://arxiv.org/abs/2203.17003}
 
 \bibitem{vignac2023digress}
 C.~Vignac, I.~Krawczuk, A.~Siraudin, B.~Wang, V.~Cevher, and P.~Frossard,
 ``DiGress: Discrete denoising diffusion for graph generation,''
 in \textit{Proc.\ International Conference on Learning Representations
 (ICLR)}, 2023.
+\\\url{https://arxiv.org/abs/2209.14734}
 
 \bibitem{nichol2021improved}
 A.~Q.~Nichol and P.~Dhariwal,
 ``Improved denoising diffusion probabilistic models,''
 in \textit{Proc.\ International Conference on Machine Learning (ICML)},
 vol.~139, pp.~8162--8171, 2021.
+\\\url{https://arxiv.org/abs/2102.09672}
 
 \bibitem{demoura2008z3}
 L.~de~Moura and N.~Bj{\o}rner,
@@ -893,17 +895,20 @@ L.~de~Moura and N.~Bj{\o}rner,
 in \textit{Proc.\ Tools and Algorithms for the Construction and Analysis
 of Systems (TACAS)}, Lecture Notes in Computer Science, vol.~4963,
 pp.~337--340, 2008.
+\\\url{https://link.springer.com/chapter/10.1007/978-3-540-78800-3_24}
 
 \bibitem{ramakrishnan2014qm9}
 R.~Ramakrishnan, P.~O.~Dral, M.~Rupp, and O.~A.~von Lilienfeld,
 ``Quantum chemistry structures and properties of 134 kilo molecules,''
 \textit{Scientific Data}, vol.~1, no.~140022, 2014.
+\\\url{https://www.nature.com/articles/sdata201422}
 
 \bibitem{irwin2012zinc}
 J.~J.~Irwin, T.~Sterling, M.~M.~Mysinger, E.~S.~Bolstad, and R.~G.~Coleman,
 ``ZINC: A free tool to discover chemistry for biology,''
 \textit{Journal of Chemical Information and Modeling}, vol.~52, no.~7,
 pp.~1757--1768, 2012.
+\\\url{https://pubs.acs.org/doi/10.1021/ci3001277}
 
 \end{thebibliography}
 
