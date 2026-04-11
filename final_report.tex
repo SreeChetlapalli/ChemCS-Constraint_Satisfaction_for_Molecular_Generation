@@ -21,6 +21,7 @@
 % ABSTRACT
 % ===================================================================
 \begin{abstract}
+<<<<<<< HEAD
 Molecular generation with diffusion models has shown promise for drug
 discovery and materials design, yet these models frequently produce
 chemically invalid structures---atoms with too many bonds, reactions that
@@ -51,6 +52,20 @@ acid--base) with 50~random seeds each, supervised generation achieves
 \textbf{100\% valency validity} compared with roughly \textbf{15\%} for
 unsupervised generation with the same untrained network. The project
 includes 118~unit tests covering every major component.
+=======
+Generative models for molecules can produce structures that violate basic chemistry rules such as
+bond valency limits, mass conservation, and charge balance. Rather than filtering out bad outputs
+after the fact, this work proposes \textbf{ChemCS}, a system that enforces chemical constraints
+during the generative process. We pair a small graph neural network (GNN) diffusion model
+with a \textbf{supervisor loop} backed by Microsoft's Z3 theorem prover. At each reverse-diffusion 
+step, the supervisor checks the candidate molecule against a set of chemical axioms and either 
+commits the step, applies a lightweight correction, or backtracks. We also introduce a 
+\textbf{constraint-aware training loss} with a curriculum schedule so the
+model can learn to avoid violations on its own. Experiments across three reaction types show that
+supervised generation achieves 100\% valency validity compared to roughly 15\% for
+unsupervised generation with the same random-weight model, and that the training loss drops by
+over 30\% within 100 epochs on a small dataset.
+>>>>>>> d673a4a1e1a4c808da67c24e5bf79449fd6f4617
 \end{abstract}
 
 % ===================================================================
@@ -58,6 +73,7 @@ includes 118~unit tests covering every major component.
 % ===================================================================
 \section{Introduction}
 
+<<<<<<< HEAD
 Generating novel molecular structures is a central challenge in
 computational chemistry. Applications range from \emph{de novo} drug
 design, where candidate molecules must satisfy pharmacological
@@ -66,6 +82,12 @@ gap or thermal stability guide the search. In recent years
 \emph{diffusion models}---originally developed for image
 generation---have been adapted to molecular graphs with encouraging
 results~\cite{hoogeboom2022equivariant, vignac2023digress}.
+=======
+Molecular generation is important for drug discovery, materials science, and chemical engineering.
+Recent work has applied diffusion models --- originally designed for images --- to molecular graphs,
+treating atoms as nodes and bonds as edges. The model starts from noise and iteratively denoises
+toward a valid molecule.
+>>>>>>> d673a4a1e1a4c808da67c24e5bf79449fd6f4617
 
 A diffusion model generates a sample by starting from pure noise and
 iteratively refining it through a sequence of learned ``denoising''
@@ -118,6 +140,7 @@ checking.
 
 \subsection{Denoising Diffusion Models on Graphs}
 
+<<<<<<< HEAD
 A denoising diffusion probabilistic model (DDPM) defines a \emph{forward
 process} that progressively corrupts a data sample~$x_0$ by adding
 Gaussian noise over $T$~timesteps, producing a sequence
@@ -126,6 +149,12 @@ noise. Generation works by learning the \emph{reverse process}: a neural
 network $\varepsilon_\theta$ is trained to predict the noise added at
 each step, so that starting from $x_T \sim \mathcal{N}(0, I)$ the model
 can iteratively recover a clean sample~$x_0$.
+=======
+Each atom is encoded as a feature vector of length 12: a one-hot encoding over 10 supported
+elements (H, C, N, O, F, P, S, Cl, Br, I), a normalized bond count, and a normalized formal charge.
+The bond structure is an $n \times n$ adjacency matrix where entries are bond orders (0 -- 3).
+
+>>>>>>> d673a4a1e1a4c808da67c24e5bf79449fd6f4617
 
 The amount of noise at each timestep is controlled by a
 \emph{variance schedule} $\{\beta_t\}_{t=1}^T$. A key quantity is the
@@ -135,6 +164,7 @@ of the original signal remains at step~$t$. When $\bar\alpha_T \approx 0$
 the data is fully destroyed; when $\bar\alpha_1 \approx 1$ almost no
 noise has been added.
 
+<<<<<<< HEAD
 For molecular graphs, the data $x_0$ consists of two components: a
 matrix of atom features (element type, bond count, charge) and an
 adjacency matrix of bond orders. The forward process adds continuous
@@ -157,6 +187,27 @@ chemical rules as constraints: for example, the statement ``for every
 atom~$i$, the total number of bonds must not exceed the allowed valency
 for that element and charge'' becomes an integer-arithmetic constraint
 that Z3 can check or refute in microseconds.
+=======
+The core model is a two-layer graph neural network (GNN). At each layer, every atom
+updates its representation by combining its own features with the average of its
+bonded neighbors' features:
+\[
+  h_i^{(l+1)} = \text{ReLU}\!\left(W_\text{self}^{(l)} h_i^{(l)}
+    + W_\text{neigh}^{(l)} \frac{1}{|\mathcal{N}(i)|} \sum_{j \in \mathcal{N}(i)} h_j^{(l)}\right)
+\]
+\noindent where $h_i^{(l)}$ is the feature vector for atom $i$ at layer $l$,
+$W_\text{self}^{(l)}$ and $W_\text{neigh}^{(l)}$ are learned weight matrices,
+$\mathcal{N}(i)$ is the set of atoms bonded to atom $i$,
+and $\text{ReLU}(x) = \max(0, x)$ clips negative values to zero.
+After two such layers, a linear head predicts atom types and a bond head predicts
+bond orders (0--3) for each pair of atoms.
+
+The model supports two noise schedules that control how quickly the molecule moves
+from clean to noisy (and back). The \textbf{linear} schedule adds noise at a steady,
+fixed rate; the \textbf{cosine} schedule (Nichol \& Dhariwal, 2021) adds noise more
+slowly at the start and end, giving the model more room to make fine-grained
+adjustments when the molecule is nearly clean.
+>>>>>>> d673a4a1e1a4c808da67c24e5bf79449fd6f4617
 
 The advantage of using an SMT solver rather than simple procedural
 checks is \emph{extensibility}: adding a new chemical rule amounts to
@@ -166,6 +217,7 @@ not strictly necessary, it establishes a framework that can accommodate
 more complex constraints (such as ring-size limits or aromaticity rules)
 in the future.
 
+<<<<<<< HEAD
 % ===================================================================
 % 3  PROBLEM FORMULATION
 % ===================================================================
@@ -405,6 +457,22 @@ The supervisor loop is the central contribution of ChemCS. It wraps the
 diffusion model's reverse process and intercepts every denoising step to
 enforce chemical validity. Algorithm~\ref{alg:supervisor} presents the
 procedure in pseudocode.
+=======
+The constraint checker:
+
+\begin{itemize}[nosep]
+  \item \textbf{Z3 backend:} Encodes mass conservation as Z3 real arithmetic, charge and atom counts
+        as integer arithmetic, and valency as integer inequality queries. Each check is posed as
+        ``is this constraint violated?''---if the solver returns SAT, the violation is real.
+\end{itemize}
+
+This checks four axioms (valency, mass, charge, atom conservation) and returns a
+\texttt{ConstraintResult} with a boolean \texttt{sat} field and a list of violation strings.
+
+\subsection{Supervisor Loop}
+
+The supervisor wraps around the diffusion model's reverse process (Algorithm~1):
+>>>>>>> d673a4a1e1a4c808da67c24e5bf79449fd6f4617
 
 \begin{algorithm}[H]
 \caption{Supervised reverse-diffusion generation.}
@@ -446,7 +514,9 @@ procedure in pseudocode.
 
 The three possible outcomes for each timestep are:
 
+```latex
 \begin{itemize}[nosep]
+<<<<<<< HEAD
   \item \textbf{Commit}: The denoised state passes all applicable
         checks on the first attempt. The step is accepted and appended
         to the trajectory history.
@@ -457,6 +527,29 @@ The three possible outcomes for each timestep are:
         corrected version passes. The supervisor reverts to the most
         recent valid state in the history and re-attempts from one
         timestep earlier, effectively ``undoing'' the failed step.
+=======
+  \item \textbf{Constraint-aware loss:} The training loss combines four terms: denoising MSE,
+        bond cross-entropy, a differentiable valency penalty, and an element conservation penalty.
+        In other words, the model is simultaneously scored on how accurately it predicts the
+        molecule, the bond types, and whether it respects chemistry rules.
+        The valency penalty uses soft probabilities over element types so gradients flow through:
+        \[
+          \mathcal{L}_\text{val} = \text{mean}\!\left(\text{ReLU}\!\left(\sum_j \mathbb{E}[\text{bond}_{ij}] - \sum_e p(e_i = e) \cdot V_e\right)\right)
+        \]
+        \noindent where $\mathbb{E}[\text{bond}_{ij}]$ is the expected number of bonds on atom $i$,
+        $p(e_i = e)$ is the predicted probability that atom $i$ is element $e$,
+        and $V_e$ is the maximum allowed bonds for element $e$ (its valency).
+        The ReLU ensures only \emph{excess} bonds are penalized/ This means that if the atom is within its bond
+        limit, the penalty is zero. Soft probabilities are used rather than hard element
+        assignments so that gradients can flow back through the loss during training.
+
+  \item \textbf{Curriculum schedule:} Training proceeds in two phases, similar to teaching
+        someone a skill before adding constraints. During the first 25\% of training (warmup),
+        constraint penalties are zeroed so the model can focus on learning basic denoising
+        without competing objectives pulling it in different directions. After warmup, the
+        penalties ramp linearly to their full weight, requiring the model to satisfy chemistry
+        rules on top of what it already learned.
+>>>>>>> d673a4a1e1a4c808da67c24e5bf79449fd6f4617
 \end{itemize}
 
 The supervisor is parameterized by \texttt{max\_retries} (how many
@@ -644,7 +737,12 @@ Both conditions use an \textbf{untrained} GNN with hidden dimension~32,
 so that the comparison isolates the effect of the supervisor from the
 effect of learned weights.
 
+<<<<<<< HEAD
 \subsection{Metrics}
+=======
+\textbf{Valency validity} is the fraction of generated molecules where every atom's total bond count
+(explicit + implicit H) does not exceed its effective valency. This is the primary metric.
+>>>>>>> d673a4a1e1a4c808da67c24e5bf79449fd6f4617
 
 Three metrics are reported:
 
@@ -680,6 +778,7 @@ The constraint checking module is validated through a comprehensive
 test suite. Unit tests cover textbook chemical scenarios including:
 
 \begin{itemize}[nosep]
+<<<<<<< HEAD
   \item Valid reactions: SN2 (CH$_3$Br + OH$^-$ $\to$ CH$_3$OH + Br$^-$)
         and methane combustion (CH$_4$ + 2\,O$_2$ $\to$ CO$_2$ +
         2\,H$_2$O) both pass all four axioms.
@@ -706,6 +805,33 @@ loop, curriculum schedule, model export, and dataset utilities.
 Figure~\ref{fig:valency} presents the main result: a comparison of
 valency validity between supervised and unsupervised generation across
 all three benchmark reactions.
+=======
+  \item Valid SN2 reaction (CH$_3$Br + OH$^-$ $\rightarrow$ CH$_3$OH + Br$^-$): all axioms satisfied.
+  \item Valid combustion (CH$_4$ + 2O$_2$ $\rightarrow$ CO$_2$ + 2H$_2$O): all axioms satisfied.
+  \item Overvalenced carbon (5 bonds): correctly flagged.
+  \item Charge mismatch (neutral Br instead of Br$^-$): charge violation caught.
+\end{itemize}
+
+
+Here's a plain English breakdown of each subsection:
+
+**Supervised vs. Unsupervised Generation:** This is the core "does it work?" test. They ran the molecule generator 50 times for each of three reaction types, using a model with completely random weights (no training at all — like asking someone who's never studied chemistry to draw molecules). Without the supervisor, only about 15% of generated molecules had valid bond counts. With the supervisor catching and fixing mistakes at every step, that jumped to 100%. The catch: it takes longer because the supervisor is constantly checking and sometimes redoing steps. Importantly, *both* approaches completely failed at the harder test (mass, charge, and atom conservation staying at 0%) — but that's expected, since a random-weight model has no idea what elements to even place. That failure is exactly what motivates building the training module.
+
+**Training Performance:** They trained the model on just 3 simple molecules (water, methane, ethanol) for 200 rounds. The key thing to watch is the valency penalty score — it started very high (~5.5, meaning the model was constantly over-bonding atoms) and dropped to nearly zero (below 0.2), showing the model genuinely *learned* to respect bond limits rather than just having the supervisor fix them. The bond prediction loss stayed the highest throughout, which makes sense — predicting exact bond types is inherently harder than predicting continuous values.
+
+**Curriculum Schedule:** This section shows *why* the two-phase training strategy matters. If you throw all the penalties at the model from day one, the competing objectives make training unstable. Starting with 25% warmup (pure denoising first, penalties added after) gives the model a solid foundation before adding the harder chemistry constraints — like learning to walk before you run.
+
+---
+
+Now here's the LaTeX with explanations woven in:
+
+```latex
+\subsection{Supervised vs.\ Unsupervised Generation}
+
+Figure~1 shows valency validity across 50 generation runs per reaction type with random (untrained)
+model weights. Both configurations use the same GNN---the only difference is whether the
+supervisor loop is active.
+>>>>>>> d673a4a1e1a4c808da67c24e5bf79449fd6f4617
 
 \begin{figure}[H]
   \centering
@@ -718,6 +844,7 @@ all three benchmark reactions.
   \label{fig:valency}
 \end{figure}
 
+<<<<<<< HEAD
 Table~\ref{tab:results} provides the complete numeric results:
 
 \begin{table}[H]
@@ -741,9 +868,22 @@ Acid--base  & 100\% & 22\% & 0\% & 0\% & $\sim$3--4$\times$ \\
 \bottomrule
 \end{tabular}
 \end{table}
+=======
+Without supervision, only $\sim$15\% of generated molecules have valid bond counts---the model
+produces chemically impossible structures most of the time. The supervisor brings this to
+100\% by catching and correcting violations at every diffusion step, even with a completely
+untrained model. The tradeoff is speed: supervised runs take longer due to the constraint
+checking and re-sampling overhead.
+
+Full conservation (mass + charge + atoms) remains at 0\% for both configurations. This is
+expected: a random-weight model has no knowledge of chemistry and cannot predict correct
+element types, so reactions cannot be balanced. This gap directly motivates the training
+module described in Section~3.5.
+>>>>>>> d673a4a1e1a4c808da67c24e5bf79449fd6f4617
 
 The key observations are:
 
+<<<<<<< HEAD
 \begin{enumerate}[nosep]
   \item The supervisor achieves \textbf{100\% valency validity} across
         all three reactions and all 50~seeds for each. Without the
@@ -764,6 +904,10 @@ The key observations are:
 
 Figure~\ref{fig:training} shows the training loss over 200~epochs on
 the three-molecule dataset.
+=======
+We trained the PyTorch GNN on a 3-molecule dataset (water, methane, ethanol) for 200 epochs.
+Figure~2 shows the loss curve over training.
+>>>>>>> d673a4a1e1a4c808da67c24e5bf79449fd6f4617
 
 \begin{figure}[H]
   \centering
@@ -776,7 +920,16 @@ the three-molecule dataset.
   \label{fig:training}
 \end{figure}
 
+<<<<<<< HEAD
 The loss curve reveals several training phases:
+=======
+The most telling signal is the valency penalty, which drops from $\sim$5.5 down to below 0.2.
+This means the model is genuinely \emph{learning} to avoid over-bonded atoms through the
+differentiable penalty---rather than relying on the supervisor to fix them after the fact.
+The bond cross-entropy dominates the total loss throughout training, which is expected:
+predicting discrete bond types (0, 1, 2, or 3) is an inherently harder task than the
+continuous denoising objective.
+>>>>>>> d673a4a1e1a4c808da67c24e5bf79449fd6f4617
 
 \begin{itemize}[nosep]
   \item \textbf{Epochs 1--50 (warmup)}: Only the denoising MSE and bond
@@ -793,10 +946,15 @@ The loss curve reveals several training phases:
         structure among $O(n^2)$ atom pairs.
 \end{itemize}
 
+<<<<<<< HEAD
 \subsection{Curriculum Schedule Ablation}
 
 Figure~\ref{fig:curriculum} compares three curriculum configurations to
 illustrate the effect of the warmup fraction.
+=======
+Figure~3 illustrates how the penalty weight scales over training for three different warmup
+fractions.
+>>>>>>> d673a4a1e1a4c808da67c24e5bf79449fd6f4617
 
 \begin{figure}[H]
   \centering
@@ -809,6 +967,7 @@ illustrate the effect of the warmup fraction.
   \label{fig:curriculum}
 \end{figure}
 
+<<<<<<< HEAD
 The 25\% warmup was selected as the default after observing that
 \textbf{no warmup} caused loss spikes in early training (the constraint
 penalties overwhelmed the denoising gradients before the model could
@@ -819,6 +978,15 @@ too few epochs for the penalties to take effect.
 % 7  DISCUSSION
 % ===================================================================
 \section{Discussion}
+=======
+The 25\% warmup (our default) strikes the best balance. Starting with no constraint penalties
+lets the model build a stable denoising baseline first. Introducing penalties too early causes
+instability, as the model is pulled in competing directions before it has learned the basics.
+After warmup, the linear ramp ensures a smooth transition to full constraint enforcement
+rather than an abrupt shift that could destabilize training.
+
+
+>>>>>>> d673a4a1e1a4c808da67c24e5bf79449fd6f4617
 
 The central finding is that \textbf{constraint enforcement during
 generation} substantially improves local chemical validity, even when
