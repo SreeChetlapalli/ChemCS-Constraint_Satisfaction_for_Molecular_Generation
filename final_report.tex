@@ -843,33 +843,23 @@ molecules tested here the overhead is negligible in absolute terms.
 \section{Limitations and Future Work}
 \label{sec:future}
 
-\emph{Training data scale.} The training experiments use only three
+\textbf{Training data scale.} The training experiments use only three
 molecules (water, methane, ethanol). A serious evaluation would require
 training on a standard dataset such as QM9~\cite{ramakrishnan2014qm9}
 or ZINC~\cite{irwin2012zinc}, parsed from SMILES strings via RDKit.
 
-\emph{Molecular complexity.} The current system handles molecules up to
-approximately 15 atoms. The bond head's pairwise computation is $O(n^2)$
-in the number of atoms, which becomes expensive for larger molecules.
-There are no rules for ring structures, stereochemistry, or aromaticity.
-
-\emph{Full conservation.} With random GNN weights, mass and atom-count
-conservation cannot be achieved because the model predicts arbitrary
-element types. Trained weights and a larger dataset are prerequisites
-for full-conservation validity.
-
-\emph{Correction sophistication.} The current repair heuristics
+\textbf{Correction sophistication.} The current repair heuristics
 (Table~\ref{tab:corrections}) are greedy and local: they fix one atom
 at a time without considering the global molecular structure. A more
 principled approach would be to ask the Z3 solver to find a minimal set
 of edits that restores validity, treating the correction itself as a
 constraint-satisfaction problem.
 
-\emph{Benchmark scale.} The current benchmark uses 50 seeds across 3
+\textbf{Benchmark scale.} The current benchmark uses 50 seeds across 3
 reactions. Scaling to approximately 1,000 reactions across diverse
 reaction types would provide stronger statistical evidence.
 
-\emph{Comparison to existing methods.} This work does not compare
+\textbf{Comparison to existing methods.} This work does not compare
 against established molecular generation baselines (e.g., DiGress,
 GDSS, or MolGAN). Such comparisons would be necessary to position
 ChemCS relative to the state of the art.
